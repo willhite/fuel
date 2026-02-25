@@ -21,10 +21,34 @@ In your Supabase project dashboard:
 
 ## 3. Run the Database Schema
 
+### Fresh installation
+
 1. In your Supabase dashboard, go to **SQL Editor**
 2. Click **New query**
 3. Copy and paste the entire contents of `schema.sql` (in this folder)
 4. Click **Run**
+
+### Applying migrations to an existing database
+
+Each file in `migrations/` represents an incremental change to the schema. Run them in order, skipping any you've already applied:
+
+| File | Phase | Description |
+|------|-------|-------------|
+| `migrations/001_initial_schema.sql` | 1 | profiles, meals, trigger, RLS |
+| `migrations/002_add_macros.sql` | 2 | macro columns on profiles and meals |
+| `migrations/003_add_recipes.sql` | 3 | recipes and recipe_ingredients tables |
+
+To apply a migration:
+1. Go to **SQL Editor → New query**
+2. Paste the contents of the migration file
+3. Click **Run**
+
+### Adding a new migration
+
+When making a schema change:
+1. Create a new file in `migrations/` with the next number (e.g. `004_your_change.sql`)
+2. Write the change as `ALTER TABLE` or `CREATE TABLE` statements — never modify existing migration files
+3. Update `schema.sql` to reflect the new full schema state
 
 ## 4. Enable Email Auth
 
