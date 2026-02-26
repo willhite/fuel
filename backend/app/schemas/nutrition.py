@@ -49,3 +49,13 @@ class DailySummary(BaseModel):
     total_fat: float
     total_fiber: float
     meals: list[MealResponse]
+
+
+class USDAFoodResult(BaseModel):
+    fdc_id: int
+    name: str
+    calories_per_100g: float
+    protein_per_100g: float
+    carbs_per_100g: float
+    fat_per_100g: float
+    fiber_per_100g: float
