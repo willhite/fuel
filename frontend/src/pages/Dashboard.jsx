@@ -73,10 +73,9 @@ export default function Dashboard() {
   const [recipeSearching, setRecipeSearching] = useState(false)
   const [recipeGrams, setRecipeGrams] = useState('100')
   const [recipeSelectedFood, setRecipeSelectedFood] = useState(null)
-  const [loggingRecipeId, setLoggingRecipeId] = useState(null)
-  const [recipeLogType, setRecipeLogType] = useState('Breakfast')
   const [recipeError, setRecipeError] = useState('')
   const [builderName, setBuilderName] = useState('')
+  const [logModal, setLogModal] = useState(null)
 
   const today = localToday()
   const isToday = currentDate === today
@@ -266,13 +265,70 @@ export default function Dashboard() {
     }
   }
 
-  async function handleLogRecipe(recipeId) {
+  function openLogModal(recipe) {
+    const checked = new Set(recipe.ingredients.filter(i => i.checked).map(i => i.id))
+    const quantities = {}
+    recipe.ingredients.forEach(i => { quantities[i.id] = String(i.quantity) })
+    const rawTotal = String(recipe.ingredients.filter(i => i.checked).reduce((s, i) => s + i.quantity, 0))
+    setLogModal({
+      recipe,
+      checked,
+      quantities,
+      totalCookedWeight: rawTotal,
+      portionWeight: rawTotal,
+      mealType: 'Breakfast',
+      loggedDate: currentDate,
+      error: '',
+    })
+  }
+
+  function logModalMacros() {
+    if (!logModal) return { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+    let calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0
+    for (const ing of logModal.recipe.ingredients) {
+      if (!logModal.checked.has(ing.id)) continue
+      const qty = parseFloat(logModal.quantities[ing.id]) || 0
+      calories += qty * ing.calories_per_unit
+      protein += qty * ing.protein_per_unit
+      carbs += qty * ing.carbs_per_unit
+      fat += qty * ing.fat_per_unit
+      fiber += qty * ing.fiber_per_unit
+    }
+    const total = parseFloat(logModal.totalCookedWeight) || 0
+    const portion = parseFloat(logModal.portionWeight) || 0
+    const scale = (total > 0 && portion > 0) ? portion / total : 1.0
+    return {
+      calories: Math.round(calories * scale),
+      protein: Math.round(protein * scale * 10) / 10,
+      carbs: Math.round(carbs * scale * 10) / 10,
+      fat: Math.round(fat * scale * 10) / 10,
+      fiber: Math.round(fiber * scale * 10) / 10,
+    }
+  }
+
+  async function handleSubmitLog() {
+    if (!logModal) return
+    const overrides = logModal.recipe.ingredients
+      .filter(i => logModal.checked.has(i.id))
+      .map(i => ({ ingredient_id: i.id, quantity: parseFloat(logModal.quantities[i.id]) || 0 }))
+      .filter(o => o.quantity > 0)
+    if (overrides.length === 0) {
+      setLogModal(m => ({ ...m, error: 'Select at least one ingredient with a quantity' }))
+      return
+    }
+    const payload = {
+      meal_type: logModal.mealType,
+      logged_date: logModal.loggedDate,
+      ingredient_overrides: overrides,
+      total_cooked_weight: parseFloat(logModal.totalCookedWeight) || null,
+      portion_weight: parseFloat(logModal.portionWeight) || null,
+    }
     try {
-      await api.logRecipe(recipeId, { meal_type: recipeLogType, logged_date: currentDate })
-      setLoggingRecipeId(null)
+      await api.logRecipe(logModal.recipe.id, payload)
+      setLogModal(null)
       loadDay(currentDate)
     } catch (err) {
-      setError(err.message)
+      setLogModal(m => ({ ...m, error: err.message }))
     }
   }
 
@@ -451,10 +507,10 @@ export default function Dashboard() {
 
         {isToday && (
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-            <p className="text-xs text-neutral-500 uppercase tracking-widest mb-4">Log a meal</p>
+            <p className="text-xs text-neutral-500 uppercase tracking-widest mb-4">Log a dish</p>
             <form onSubmit={handleAddMeal} className="flex flex-col gap-2">
               <div className="flex flex-wrap gap-2">
-                <input type="text" placeholder="Meal name" value={mealName} onChange={e => setMealName(e.target.value)}
+                <input type="text" placeholder="Dish name" value={mealName} onChange={e => setMealName(e.target.value)}
                   className="flex-[2] min-w-36 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
                 <button type="button" onClick={handleFoodSearch} disabled={searching || !mealName.trim()}
                   className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-xl text-xs text-neutral-400 hover:border-amber-400 transition-colors disabled:opacity-40 whitespace-nowrap">
@@ -511,10 +567,10 @@ export default function Dashboard() {
         {isToday && (
           <div>
             <div className="flex justify-between items-center mb-3">
-              <p className="text-xs text-neutral-500 uppercase tracking-widest">Recipes</p>
+              <p className="text-xs text-neutral-500 uppercase tracking-widest">Recipe Templates</p>
               <button onClick={() => { setShowRecipeBuilder(s => !s); setActiveRecipe(null); setRecipeIngredients([]) }}
                 className="text-xs text-neutral-600 hover:text-amber-400 transition-colors">
-                {showRecipeBuilder ? 'cancel' : '+ build recipe'}
+                {showRecipeBuilder ? 'cancel' : '+ new template'}
               </button>
             </div>
 
@@ -573,14 +629,41 @@ export default function Dashboard() {
                     {recipeIngredients.length > 0 && (
                       <div className="flex flex-col gap-1">
                         {recipeIngredients.map(ing => (
-                          <div key={ing.id} className="px-3 py-2 bg-neutral-800 rounded-xl text-sm">
-                            <div className="flex justify-between items-center">
-                              <span className="text-neutral-300">{ing.food_name}</span>
+                          <div key={ing.id} className={`px-3 py-2 bg-neutral-800 rounded-xl text-sm transition-opacity ${!ing.checked ? 'opacity-50' : ''}`}>
+                            <div className="flex items-center gap-2">
+                              <input type="checkbox" checked={!!ing.checked}
+                                onChange={async () => {
+                                  const updated = await api.updateIngredient(activeRecipe.id, ing.id, { checked: !ing.checked })
+                                  setRecipeIngredients(prev => prev.map(i => i.id === ing.id ? updated : i))
+                                }}
+                                className="accent-amber-400 w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="flex-1 text-neutral-300">{ing.food_name}</span>
+                              <input type="number"
+                                defaultValue={ing.quantity}
+                                onBlur={async e => {
+                                  const val = parseFloat(e.target.value)
+                                  if (val > 0 && val !== ing.quantity) {
+                                    const updated = await api.updateIngredient(activeRecipe.id, ing.id, { quantity: val })
+                                    setRecipeIngredients(prev => prev.map(i => i.id === ing.id ? updated : i))
+                                  }
+                                }}
+                                onKeyDown={async e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    const val = parseFloat(e.target.value)
+                                    if (val > 0 && val !== ing.quantity) {
+                                      const updated = await api.updateIngredient(activeRecipe.id, ing.id, { quantity: val })
+                                      setRecipeIngredients(prev => prev.map(i => i.id === ing.id ? updated : i))
+                                    }
+                                  }
+                                }}
+                                min="1" step="1"
+                                className="w-16 bg-neutral-700 border border-neutral-600 rounded-xl px-2 py-1 text-sm text-center focus:outline-none focus:border-amber-400" />
+                              <span className="text-xs text-neutral-600">g</span>
                               <button type="button" onClick={() => handleRemoveIngredient(ing.id)}
                                 className="text-neutral-700 hover:text-red-400 transition-colors text-xs">✕</button>
                             </div>
-                            <div className="flex gap-3 mt-1 text-xs text-neutral-600">
-                              <span>{ing.quantity}g</span>
+                            <div className="flex gap-3 mt-1 ml-5 text-xs text-neutral-600">
                               <span className="text-amber-400">{Math.round(ing.quantity * ing.calories_per_unit)} kcal</span>
                               <span>P <span className="text-neutral-400">{(ing.quantity * ing.protein_per_unit).toFixed(1)}g</span></span>
                               <span>C <span className="text-neutral-400">{(ing.quantity * ing.carbs_per_unit).toFixed(1)}g</span></span>
@@ -610,51 +693,136 @@ export default function Dashboard() {
 
             {recipes.length > 0 && (
               <div className="flex flex-col gap-2">
-                {recipes.map(recipe => {
-                  const isLogging = loggingRecipeId === recipe.id
-                  return (
-                    <div key={recipe.id} className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-sm text-white">{recipe.name}</p>
-                          <div className="flex gap-3 mt-1 text-xs text-neutral-600">
-                            <span className="text-amber-400/80">{Math.round(recipe.total_calories)} kcal</span>
-                            <span>P {Math.round(recipe.total_protein * 10) / 10}g</span>
-                            <span>C {Math.round(recipe.total_carbs * 10) / 10}g</span>
-                            <span>F {Math.round(recipe.total_fat * 10) / 10}g</span>
-                            <span>Fb {Math.round(recipe.total_fiber * 10) / 10}g</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => handleEditRecipe(recipe)}
-                            className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
-                            edit
-                          </button>
-                          <button onClick={() => setLoggingRecipeId(isLogging ? null : recipe.id)}
-                            className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
-                            log
-                          </button>
-                          <button onClick={() => handleDeleteRecipe(recipe.id)}
-                            className="text-neutral-700 hover:text-red-400 transition-colors text-xs">✕</button>
+                {recipes.map(recipe => (
+                  <div key={recipe.id} className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm text-white">{recipe.name}</p>
+                        <div className="flex gap-3 mt-1 text-xs text-neutral-600">
+                          <span className="text-amber-400/80">{Math.round(recipe.total_calories)} kcal</span>
+                          <span>P {Math.round(recipe.total_protein * 10) / 10}g</span>
+                          <span>C {Math.round(recipe.total_carbs * 10) / 10}g</span>
+                          <span>F {Math.round(recipe.total_fat * 10) / 10}g</span>
+                          <span>Fb {Math.round(recipe.total_fiber * 10) / 10}g</span>
                         </div>
                       </div>
-                      {isLogging && (
-                        <div className="flex gap-2 mt-2">
-                          <select value={recipeLogType} onChange={e => setRecipeLogType(e.target.value)}
-                            className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-amber-400">
-                            {MEAL_TYPES.map(t => <option key={t}>{t}</option>)}
-                          </select>
-                          <button onClick={() => handleLogRecipe(recipe.id)}
-                            className="bg-amber-400 text-neutral-950 font-bold px-4 py-1.5 rounded-xl hover:bg-amber-300 transition-colors text-sm">
-                            confirm
-                          </button>
-                          <button onClick={() => setLoggingRecipeId(null)}
-                            className="text-xs text-neutral-600 hover:text-neutral-400 px-2">cancel</button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleEditRecipe(recipe)}
+                          className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
+                          edit
+                        </button>
+                        <button onClick={() => openLogModal(recipe)}
+                          className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
+                          log
+                        </button>
+                        <button onClick={() => handleDeleteRecipe(recipe.id)}
+                          className="text-neutral-700 hover:text-red-400 transition-colors text-xs">✕</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {logModal && (
+              <div className="bg-neutral-900 border border-amber-400/30 rounded-2xl p-5 mt-3">
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-sm font-bold text-white">{logModal.recipe.name}</p>
+                  <button onClick={() => setLogModal(null)} className="text-xs text-neutral-600 hover:text-neutral-400">cancel</button>
+                </div>
+                {logModal.error && <div className="text-red-400 text-xs mb-3">{logModal.error}</div>}
+
+                <div className="flex flex-col gap-1 mb-4">
+                  {logModal.recipe.ingredients.map(ing => {
+                    const isChecked = logModal.checked.has(ing.id)
+                    const qty = parseFloat(logModal.quantities[ing.id]) || 0
+                    return (
+                      <div key={ing.id} className={`px-3 py-2 bg-neutral-800 rounded-xl text-sm transition-opacity ${!isChecked ? 'opacity-40' : ''}`}>
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={isChecked}
+                            onChange={() => setLogModal(m => {
+                              const checked = new Set(m.checked)
+                              if (checked.has(ing.id)) checked.delete(ing.id)
+                              else checked.add(ing.id)
+                              return { ...m, checked }
+                            })}
+                            className="accent-amber-400 w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="flex-1 text-neutral-300">{ing.food_name}</span>
+                          <input type="number" value={logModal.quantities[ing.id]}
+                            onChange={e => setLogModal(m => ({ ...m, quantities: { ...m.quantities, [ing.id]: e.target.value } }))}
+                            disabled={!isChecked}
+                            min="0" step="1"
+                            className="w-16 bg-neutral-700 border border-neutral-600 rounded-xl px-2 py-1 text-sm text-center focus:outline-none focus:border-amber-400 disabled:opacity-30" />
+                          <span className="text-xs text-neutral-600">g</span>
                         </div>
-                      )}
+                        {isChecked && (
+                          <div className="flex gap-3 mt-1 ml-5 text-xs text-neutral-600">
+                            <span className="text-amber-400">{Math.round(qty * ing.calories_per_unit)} kcal</span>
+                            <span>P <span className="text-neutral-400">{(qty * ing.protein_per_unit).toFixed(1)}g</span></span>
+                            <span>C <span className="text-neutral-400">{(qty * ing.carbs_per_unit).toFixed(1)}g</span></span>
+                            <span>F <span className="text-neutral-400">{(qty * ing.fat_per_unit).toFixed(1)}g</span></span>
+                            <span>Fb <span className="text-neutral-400">{(qty * ing.fiber_per_unit).toFixed(1)}g</span></span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {(() => {
+                  const m = logModalMacros()
+                  return (
+                    <div className="flex gap-3 px-3 py-2 text-xs border-t border-neutral-700 mb-4">
+                      <span className="text-neutral-500">Total:</span>
+                      <span className="text-amber-400 font-bold">{m.calories} kcal</span>
+                      <span className="text-neutral-400">P {m.protein}g</span>
+                      <span className="text-neutral-400">C {m.carbs}g</span>
+                      <span className="text-neutral-400">F {m.fat}g</span>
+                      <span className="text-neutral-400">Fb {m.fiber}g</span>
                     </div>
                   )
-                })}
+                })()}
+
+                {(() => {
+                  const rawWeight = logModal.recipe.ingredients
+                    .filter(i => logModal.checked.has(i.id))
+                    .reduce((s, i) => s + (parseFloat(logModal.quantities[i.id]) || 0), 0)
+                  return (
+                    <div className="flex gap-2 text-xs text-neutral-600 mb-3">
+                      <span>Total raw weight:</span>
+                      <span className="text-neutral-400 font-medium">{Math.round(rawWeight)}g</span>
+                    </div>
+                  )
+                })()}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <div className="flex-1 min-w-32">
+                    <label className="block text-xs text-neutral-600 mb-1">Total cooked weight (g)</label>
+                    <input type="number" value={logModal.totalCookedWeight} min="1"
+                      onChange={e => setLogModal(m => ({ ...m, totalCookedWeight: e.target.value }))}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" />
+                  </div>
+                  <div className="flex-1 min-w-32">
+                    <label className="block text-xs text-neutral-600 mb-1">Amount consumed (g)</label>
+                    <input type="number" value={logModal.portionWeight} min="1"
+                      onChange={e => setLogModal(m => ({ ...m, portionWeight: e.target.value }))}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <select value={logModal.mealType} onChange={e => setLogModal(m => ({ ...m, mealType: e.target.value }))}
+                    className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400">
+                    {MEAL_TYPES.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                  <input type="date" value={logModal.loggedDate}
+                    onChange={e => setLogModal(m => ({ ...m, loggedDate: e.target.value }))}
+                    max={today}
+                    className="bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" />
+                  <button onClick={handleSubmitLog}
+                    className="bg-amber-400 text-neutral-950 font-bold px-4 py-2 rounded-xl hover:bg-amber-300 transition-colors text-sm whitespace-nowrap">
+                    Log dish
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -662,14 +830,14 @@ export default function Dashboard() {
 
         <div>
           <p className="text-xs text-neutral-500 uppercase tracking-widest mb-3">
-            {isToday ? "Today's meals" : `Meals on ${formatDate(currentDate)}`}
+            {isToday ? "Today's dishes" : `Dishes on ${formatDate(currentDate)}`}
           </p>
           {loading ? (
             <div className="text-neutral-700 text-sm py-8 text-center">Loading...</div>
           ) : summary?.meals.length === 0 ? (
             <div className="text-center py-10 text-neutral-700 text-sm">
               <span className="block text-2xl mb-2">🍽</span>
-              No meals logged{isToday ? ' yet today' : ' for this day'}
+              No dishes logged{isToday ? ' yet today' : ' for this day'}
             </div>
           ) : (
             <div className="flex flex-col gap-2">

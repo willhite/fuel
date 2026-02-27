@@ -39,5 +39,6 @@ export const api = {
   addIngredient: (recipeId, data) => request('POST', `/recipes/${recipeId}/ingredients`, data),
   removeIngredient: (recipeId, ingredientId) => request('DELETE', `/recipes/${recipeId}/ingredients/${ingredientId}`),
   updateRecipe: (id, data) => request('PATCH', `/recipes/${id}`, data),
+  updateIngredient: (recipeId, ingredientId, data) => request('PATCH', `/recipes/${recipeId}/ingredients/${ingredientId}`, data),
   logRecipe: (recipeId, data) => request('POST', `/recipes/${recipeId}/log`, data),
 }

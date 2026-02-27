@@ -69,6 +69,7 @@ create table public.recipe_ingredients (
   fat_per_unit numeric(8,2) not null default 0,
   fiber_per_unit numeric(8,2) not null default 0,
   usda_fdc_id text,
+  checked boolean not null default true,
   created_at timestamptz not null default now()
 );
 

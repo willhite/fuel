@@ -66,11 +66,17 @@ class RecipeIngredientAdd(BaseModel):
     quantity: float = Field(..., gt=0)
     unit: str = "g"
     usda_fdc_id: Optional[int] = None
+    checked: bool = True
     calories_per_unit: float = 0.0
     protein_per_unit: float = 0.0
     carbs_per_unit: float = 0.0
     fat_per_unit: float = 0.0
     fiber_per_unit: float = 0.0
+
+
+class RecipeIngredientUpdate(BaseModel):
+    checked: Optional[bool] = None
+    quantity: Optional[float] = Field(None, gt=0)
 
 
 class RecipeIngredientResponse(RecipeIngredientAdd):
@@ -99,7 +105,14 @@ class RecipeResponse(BaseModel):
     total_fiber: float
 
 
+class RecipeIngredientOverride(BaseModel):
+    ingredient_id: str
+    quantity: float  # actual grams used this session
+
+
 class RecipeLogRequest(BaseModel):
     meal_type: str = Field(..., pattern="^(Breakfast|Lunch|Dinner|Snack)$")
     logged_date: date = Field(default_factory=date.today)
-    servings: float = Field(default=1.0, gt=0)
+    ingredient_overrides: list[RecipeIngredientOverride]
+    total_cooked_weight: Optional[float] = None
+    portion_weight: Optional[float] = None

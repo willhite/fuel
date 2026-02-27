@@ -7,6 +7,8 @@ from app.schemas.nutrition import (
     RecipeCreate,
     RecipeIngredientAdd,
     RecipeIngredientResponse,
+    RecipeIngredientUpdate,
+    RecipeIngredientOverride,
     RecipeLogRequest,
     RecipeResponse,
     RecipeUpdate,
@@ -130,6 +132,24 @@ async def add_ingredient(recipe_id: str, ingredient: RecipeIngredientAdd, user=D
     return RecipeIngredientResponse(**res.data[0])
 
 
+@router.patch("/{recipe_id}/ingredients/{ingredient_id}", response_model=RecipeIngredientResponse)
+async def update_ingredient(recipe_id: str, ingredient_id: str, data: RecipeIngredientUpdate, user=Depends(get_current_user)):
+    _get_recipe_or_404(recipe_id, user["id"])
+    update = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    res = (
+        supabase_admin.table("recipe_ingredients")
+        .update(update)
+        .eq("id", ingredient_id)
+        .eq("recipe_id", recipe_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to update ingredient")
+    return RecipeIngredientResponse(**res.data[0])
+
+
 @router.delete("/{recipe_id}/ingredients/{ingredient_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_ingredient(recipe_id: str, ingredient_id: str, user=Depends(get_current_user)):
     _get_recipe_or_404(recipe_id, user["id"])
@@ -139,27 +159,51 @@ async def remove_ingredient(recipe_id: str, ingredient_id: str, user=Depends(get
 @router.post("/{recipe_id}/log", response_model=MealResponse, status_code=status.HTTP_201_CREATED)
 async def log_recipe(recipe_id: str, body: RecipeLogRequest, user=Depends(get_current_user)):
     recipe = _get_recipe_or_404(recipe_id, user["id"])
+    if not body.ingredient_overrides:
+        raise HTTPException(status_code=400, detail="No ingredients selected")
+
+    # Fetch only the selected ingredients, scoped to this recipe for security
+    override_ids = [o.ingredient_id for o in body.ingredient_overrides]
     ingredients_res = (
         supabase_admin.table("recipe_ingredients")
         .select("*")
+        .in_("id", override_ids)
         .eq("recipe_id", recipe_id)
         .execute()
     )
-    ingredients = ingredients_res.data or []
-    if not ingredients:
-        raise HTTPException(status_code=400, detail="Recipe has no ingredients")
-    totals = _compute_totals(ingredients)
-    factor = body.servings / recipe["servings"]
+    ingredient_by_id = {i["id"]: i for i in (ingredients_res.data or [])}
+
+    # Compute raw totals using the override quantities
+    total_calories = 0.0
+    total_protein = 0.0
+    total_carbs = 0.0
+    total_fat = 0.0
+    total_fiber = 0.0
+    for override in body.ingredient_overrides:
+        ing = ingredient_by_id.get(override.ingredient_id)
+        if ing:
+            total_calories += override.quantity * ing["calories_per_unit"]
+            total_protein += override.quantity * ing["protein_per_unit"]
+            total_carbs += override.quantity * ing["carbs_per_unit"]
+            total_fat += override.quantity * ing["fat_per_unit"]
+            total_fiber += override.quantity * ing["fiber_per_unit"]
+
+    # Scale by portion weight if provided
+    if body.total_cooked_weight and body.portion_weight and body.total_cooked_weight > 0:
+        scale = body.portion_weight / body.total_cooked_weight
+    else:
+        scale = 1.0
+
     payload = {
         "user_id": user["id"],
         "logged_date": str(body.logged_date),
         "meal_type": body.meal_type,
         "name": recipe["name"],
-        "calories": round(totals["total_calories"] * factor),
-        "protein_g": round(totals["total_protein"] * factor, 1),
-        "carbs_g": round(totals["total_carbs"] * factor, 1),
-        "fat_g": round(totals["total_fat"] * factor, 1),
-        "fiber_g": round(totals["total_fiber"] * factor, 1),
+        "calories": round(total_calories * scale),
+        "protein_g": round(total_protein * scale, 1),
+        "carbs_g": round(total_carbs * scale, 1),
+        "fat_g": round(total_fat * scale, 1),
+        "fiber_g": round(total_fiber * scale, 1),
     }
     res = supabase_admin.table("meals").insert(payload).execute()
     if not res.data:
