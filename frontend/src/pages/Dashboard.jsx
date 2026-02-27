@@ -59,9 +59,36 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false)
   const [goalEdits, setGoalEdits] = useState({})
   const [savingGoals, setSavingGoals] = useState(false)
+  const [foodResults, setFoodResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [selectedFood, setSelectedFood] = useState(null)
+  const [grams, setGrams] = useState('100')
+  const [recipes, setRecipes] = useState([])
+  const [showRecipeBuilder, setShowRecipeBuilder] = useState(false)
+  const [activeRecipe, setActiveRecipe] = useState(null)
+  const [recipeName, setRecipeName] = useState('')
+  const [recipeIngredients, setRecipeIngredients] = useState([])
+  const [recipeQuery, setRecipeQuery] = useState('')
+  const [recipeSearchResults, setRecipeSearchResults] = useState([])
+  const [recipeSearching, setRecipeSearching] = useState(false)
+  const [recipeGrams, setRecipeGrams] = useState('100')
+  const [recipeSelectedFood, setRecipeSelectedFood] = useState(null)
+  const [loggingRecipeId, setLoggingRecipeId] = useState(null)
+  const [recipeLogType, setRecipeLogType] = useState('Breakfast')
+  const [recipeError, setRecipeError] = useState('')
+  const [builderName, setBuilderName] = useState('')
 
   const today = localToday()
   const isToday = currentDate === today
+
+  const loadRecipes = useCallback(async () => {
+    try {
+      const data = await api.getRecipes()
+      setRecipes(data)
+    } catch (_) {}
+  }, [])
+
+  useEffect(() => { loadRecipes() }, [loadRecipes])
 
   const loadDay = useCallback(async (date) => {
     setLoading(true)
@@ -96,6 +123,169 @@ export default function Dashboard() {
     }
   }, [profile])
 
+  async function handleFoodSearch() {
+    if (!mealName.trim()) return
+    setSearching(true)
+    setFoodResults([])
+    try {
+      const results = await api.searchFoods(mealName.trim())
+      setFoodResults(results)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  function applyGrams(food, g) {
+    const factor = parseFloat(g) / 100
+    setMealCal(String(Math.round(food.calories_per_100g * factor)))
+    setMealProtein((food.protein_per_100g * factor).toFixed(1))
+    setMealCarbs((food.carbs_per_100g * factor).toFixed(1))
+    setMealFat((food.fat_per_100g * factor).toFixed(1))
+    setMealFiber((food.fiber_per_100g * factor).toFixed(1))
+  }
+
+  function handleFoodSelect(food) {
+    setSelectedFood(food)
+    setMealName(food.name)
+    setFoodResults([])
+    applyGrams(food, grams)
+  }
+
+  function handleGramsChange(e) {
+    setGrams(e.target.value)
+    if (selectedFood && e.target.value) applyGrams(selectedFood, e.target.value)
+  }
+
+  function clearFoodSearch() {
+    setSelectedFood(null)
+    setFoodResults([])
+    setGrams('100')
+  }
+
+  async function handleCreateRecipe(e) {
+    e.preventDefault()
+    if (!recipeName.trim()) return
+    try {
+      const recipe = await api.createRecipe({ name: recipeName.trim() })
+      setActiveRecipe(recipe)
+      setBuilderName(recipe.name)
+      setRecipeIngredients(recipe.ingredients)
+      setRecipeName('')
+    } catch (err) {
+      setRecipeError(err.message)
+    }
+  }
+
+  function handleEditRecipe(recipe) {
+    setActiveRecipe(recipe)
+    setBuilderName(recipe.name)
+    setRecipeIngredients(recipe.ingredients)
+    setShowRecipeBuilder(true)
+  }
+
+  async function handleRenameRecipe() {
+    if (!activeRecipe || !builderName.trim() || builderName.trim() === activeRecipe.name) return
+    try {
+      const updated = await api.updateRecipe(activeRecipe.id, { name: builderName.trim() })
+      setActiveRecipe(updated)
+    } catch (err) {
+      setRecipeError(err.message)
+    }
+  }
+
+  async function handleRecipeSearch() {
+    if (!recipeQuery.trim()) return
+    setRecipeSearching(true)
+    setRecipeSearchResults([])
+    try {
+      const results = await api.searchFoods(recipeQuery.trim())
+      setRecipeSearchResults(results)
+    } catch (err) {
+      setRecipeError(err.message)
+    } finally {
+      setRecipeSearching(false)
+    }
+  }
+
+  async function handleAddRecipeIngredient(food) {
+    if (!activeRecipe) return
+    setRecipeSearchResults([])
+    setRecipeQuery('')
+    const g = parseFloat(recipeGrams) || 100
+    const ingredient = {
+      food_name: food.name,
+      quantity: g,
+      unit: 'g',
+      usda_fdc_id: food.fdc_id,
+      calories_per_unit: food.calories_per_100g / 100,
+      protein_per_unit: food.protein_per_100g / 100,
+      carbs_per_unit: food.carbs_per_100g / 100,
+      fat_per_unit: food.fat_per_100g / 100,
+      fiber_per_unit: food.fiber_per_100g / 100,
+    }
+    try {
+      const added = await api.addIngredient(activeRecipe.id, ingredient)
+      setRecipeIngredients(prev => [...prev, added])
+      setRecipeSelectedFood(null)
+      setRecipeGrams('100')
+    } catch (err) {
+      setRecipeError(err.message)
+    }
+  }
+
+  async function handleRemoveIngredient(ingredientId) {
+    if (!activeRecipe) return
+    try {
+      await api.removeIngredient(activeRecipe.id, ingredientId)
+      setRecipeIngredients(prev => prev.filter(i => i.id !== ingredientId))
+    } catch (err) {
+      setRecipeError(err.message)
+    }
+  }
+
+  function handleDoneBuilding() {
+    setShowRecipeBuilder(false)
+    setActiveRecipe(null)
+    setRecipeIngredients([])
+    setRecipeQuery('')
+    setRecipeSearchResults([])
+    setRecipeGrams('100')
+    setRecipeSelectedFood(null)
+    setRecipeError('')
+    loadRecipes()
+  }
+
+  async function handleDeleteRecipe(id) {
+    try {
+      await api.deleteRecipe(id)
+      setRecipes(prev => prev.filter(r => r.id !== id))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleLogRecipe(recipeId) {
+    try {
+      await api.logRecipe(recipeId, { meal_type: recipeLogType, logged_date: currentDate })
+      setLoggingRecipeId(null)
+      loadDay(currentDate)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function recipeTotals(ingredients) {
+    return {
+      calories: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.calories_per_unit, 0)),
+      protein: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.protein_per_unit, 0) * 10) / 10,
+      carbs: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.carbs_per_unit, 0) * 10) / 10,
+      fat: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.fat_per_unit, 0) * 10) / 10,
+      fiber: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.fiber_per_unit, 0) * 10) / 10,
+    }
+  }
+
   async function handleAddMeal(e) {
     e.preventDefault()
     if (!mealName.trim() || !mealCal) return
@@ -117,6 +307,7 @@ export default function Dashboard() {
       setMealCarbs('')
       setMealFat('')
       setMealFiber('')
+      clearFoodSearch()
       loadDay(currentDate)
     } catch (err) {
       setError(err.message)
@@ -265,6 +456,10 @@ export default function Dashboard() {
               <div className="flex flex-wrap gap-2">
                 <input type="text" placeholder="Meal name" value={mealName} onChange={e => setMealName(e.target.value)}
                   className="flex-[2] min-w-36 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
+                <button type="button" onClick={handleFoodSearch} disabled={searching || !mealName.trim()}
+                  className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-xl text-xs text-neutral-400 hover:border-amber-400 transition-colors disabled:opacity-40 whitespace-nowrap">
+                  {searching ? '...' : 'lookup'}
+                </button>
                 <input type="number" placeholder="kcal" value={mealCal} onChange={e => setMealCal(e.target.value)} min="1"
                   className="flex-1 min-w-20 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
                 <select value={mealType} onChange={e => setMealType(e.target.value)}
@@ -276,6 +471,26 @@ export default function Dashboard() {
                   {adding ? '...' : '+ Add'}
                 </button>
               </div>
+              {foodResults.length > 0 && (
+                <div className="bg-neutral-800 border border-neutral-700 rounded-xl overflow-hidden">
+                  {foodResults.slice(0, 8).map(food => (
+                    <button key={food.fdc_id} type="button" onClick={() => handleFoodSelect(food)}
+                      className="w-full text-left px-3 py-2 hover:bg-neutral-700 text-sm border-b border-neutral-700/50 last:border-0 transition-colors">
+                      <span className="text-white">{food.name}</span>
+                      <span className="text-neutral-500 text-xs ml-2">{food.calories_per_100g} kcal / 100g</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedFood && (
+                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                  <span>{selectedFood.name} ·</span>
+                  <input type="number" value={grams} onChange={handleGramsChange} min="1"
+                    className="w-16 bg-neutral-800 border border-neutral-700 rounded-xl px-2 py-1 text-sm focus:outline-none focus:border-amber-400" />
+                  <span>g</span>
+                  <button type="button" onClick={clearFoodSearch} className="text-neutral-600 hover:text-neutral-400 ml-1">✕</button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2 items-center">
                 {[
                   { val: mealProtein, set: setMealProtein, placeholder: 'protein g' },
@@ -290,6 +505,158 @@ export default function Dashboard() {
                 <span className="text-xs text-neutral-700 px-1">optional</span>
               </div>
             </form>
+          </div>
+        )}
+
+        {isToday && (
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <p className="text-xs text-neutral-500 uppercase tracking-widest">Recipes</p>
+              <button onClick={() => { setShowRecipeBuilder(s => !s); setActiveRecipe(null); setRecipeIngredients([]) }}
+                className="text-xs text-neutral-600 hover:text-amber-400 transition-colors">
+                {showRecipeBuilder ? 'cancel' : '+ build recipe'}
+              </button>
+            </div>
+
+            {showRecipeBuilder && (
+              <div className="bg-neutral-900 border border-amber-400/20 rounded-2xl p-5 mb-3">
+                {recipeError && <div className="text-red-400 text-xs mb-3">{recipeError}</div>}
+                {!activeRecipe ? (
+                  <form onSubmit={handleCreateRecipe} className="flex gap-2">
+                    <input type="text" placeholder="Recipe name" value={recipeName}
+                      onChange={e => setRecipeName(e.target.value)}
+                      className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
+                    <button type="submit" disabled={!recipeName.trim()}
+                      className="bg-amber-400 text-neutral-950 font-bold px-4 py-2.5 rounded-xl hover:bg-amber-300 transition-colors disabled:opacity-50 text-sm whitespace-nowrap">
+                      Create
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex justify-between items-center gap-2">
+                      <input value={builderName} onChange={e => setBuilderName(e.target.value)}
+                        onBlur={handleRenameRecipe}
+                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleRenameRecipe())}
+                        className="flex-1 bg-transparent text-sm text-white font-bold focus:outline-none border-b border-transparent focus:border-amber-400 transition-colors pb-0.5" />
+                      <button type="button" onClick={handleDoneBuilding}
+                        className="text-xs bg-amber-400 text-neutral-950 font-bold px-3 py-1.5 rounded-xl hover:bg-amber-300 transition-colors whitespace-nowrap">
+                        Done
+                      </button>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <input type="text" placeholder="Search ingredient" value={recipeQuery}
+                        onChange={e => setRecipeQuery(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleRecipeSearch())}
+                        className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
+                      <input type="number" value={recipeGrams} onChange={e => setRecipeGrams(e.target.value)} min="1"
+                        className="w-16 bg-neutral-800 border border-neutral-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-amber-400" />
+                      <span className="text-xs text-neutral-500">g</span>
+                      <button type="button" onClick={handleRecipeSearch} disabled={recipeSearching || !recipeQuery.trim()}
+                        className="px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-xl text-xs text-neutral-400 hover:border-amber-400 transition-colors disabled:opacity-40 whitespace-nowrap">
+                        {recipeSearching ? '...' : 'search'}
+                      </button>
+                    </div>
+                    {recipeSearchResults.length > 0 && (
+                      <div className="bg-neutral-800 border border-neutral-700 rounded-xl overflow-hidden">
+                        {recipeSearchResults.slice(0, 6).map(food => (
+                          <button key={food.fdc_id} type="button" onClick={() => handleAddRecipeIngredient(food)}
+                            className="w-full text-left px-3 py-2 hover:bg-neutral-700 text-sm border-b border-neutral-700/50 last:border-0 transition-colors">
+                            <span className="text-white">{food.name}</span>
+                            <span className="text-neutral-500 text-xs ml-2">{food.calories_per_100g} kcal/100g</span>
+                            <span className="text-amber-400/70 text-xs ml-2">
+                              +{Math.round(food.calories_per_100g * (parseFloat(recipeGrams) || 100) / 100)} kcal at {recipeGrams}g
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {recipeIngredients.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        {recipeIngredients.map(ing => (
+                          <div key={ing.id} className="px-3 py-2 bg-neutral-800 rounded-xl text-sm">
+                            <div className="flex justify-between items-center">
+                              <span className="text-neutral-300">{ing.food_name}</span>
+                              <button type="button" onClick={() => handleRemoveIngredient(ing.id)}
+                                className="text-neutral-700 hover:text-red-400 transition-colors text-xs">✕</button>
+                            </div>
+                            <div className="flex gap-3 mt-1 text-xs text-neutral-600">
+                              <span>{ing.quantity}g</span>
+                              <span className="text-amber-400">{Math.round(ing.quantity * ing.calories_per_unit)} kcal</span>
+                              <span>P <span className="text-neutral-400">{(ing.quantity * ing.protein_per_unit).toFixed(1)}g</span></span>
+                              <span>C <span className="text-neutral-400">{(ing.quantity * ing.carbs_per_unit).toFixed(1)}g</span></span>
+                              <span>F <span className="text-neutral-400">{(ing.quantity * ing.fat_per_unit).toFixed(1)}g</span></span>
+                              <span>Fb <span className="text-neutral-400">{(ing.quantity * ing.fiber_per_unit).toFixed(1)}g</span></span>
+                            </div>
+                          </div>
+                        ))}
+                        {(() => {
+                          const t = recipeTotals(recipeIngredients)
+                          return (
+                            <div className="flex gap-3 px-3 py-2 text-xs text-neutral-500 border-t border-neutral-700 mt-1">
+                              <span className="text-amber-400 font-bold">{t.calories} kcal</span>
+                              <span>P {t.protein}g</span>
+                              <span>C {t.carbs}g</span>
+                              <span>F {t.fat}g</span>
+                              <span>Fb {t.fiber}g</span>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {recipes.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {recipes.map(recipe => {
+                  const isLogging = loggingRecipeId === recipe.id
+                  return (
+                    <div key={recipe.id} className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-sm text-white">{recipe.name}</p>
+                          <div className="flex gap-3 mt-1 text-xs text-neutral-600">
+                            <span className="text-amber-400/80">{Math.round(recipe.total_calories)} kcal</span>
+                            <span>P {Math.round(recipe.total_protein * 10) / 10}g</span>
+                            <span>C {Math.round(recipe.total_carbs * 10) / 10}g</span>
+                            <span>F {Math.round(recipe.total_fat * 10) / 10}g</span>
+                            <span>Fb {Math.round(recipe.total_fiber * 10) / 10}g</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditRecipe(recipe)}
+                            className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
+                            edit
+                          </button>
+                          <button onClick={() => setLoggingRecipeId(isLogging ? null : recipe.id)}
+                            className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
+                            log
+                          </button>
+                          <button onClick={() => handleDeleteRecipe(recipe.id)}
+                            className="text-neutral-700 hover:text-red-400 transition-colors text-xs">✕</button>
+                        </div>
+                      </div>
+                      {isLogging && (
+                        <div className="flex gap-2 mt-2">
+                          <select value={recipeLogType} onChange={e => setRecipeLogType(e.target.value)}
+                            className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-amber-400">
+                            {MEAL_TYPES.map(t => <option key={t}>{t}</option>)}
+                          </select>
+                          <button onClick={() => handleLogRecipe(recipe.id)}
+                            className="bg-amber-400 text-neutral-950 font-bold px-4 py-1.5 rounded-xl hover:bg-amber-300 transition-colors text-sm">
+                            confirm
+                          </button>
+                          <button onClick={() => setLoggingRecipeId(null)}
+                            className="text-xs text-neutral-600 hover:text-neutral-400 px-2">cancel</button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 

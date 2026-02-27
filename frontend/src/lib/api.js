@@ -32,4 +32,12 @@ export const api = {
   getHistory: (limit = 14) => request('GET', `/meals/history?limit=${limit}`),
   getProfile: () => request('GET', '/profile/'),
   updateProfile: (data) => request('PATCH', '/profile/', data),
+  searchFoods: (query) => request('GET', `/usda/search?query=${encodeURIComponent(query)}`),
+  getRecipes: () => request('GET', '/recipes/'),
+  createRecipe: (data) => request('POST', '/recipes/', data),
+  deleteRecipe: (id) => request('DELETE', `/recipes/${id}`),
+  addIngredient: (recipeId, data) => request('POST', `/recipes/${recipeId}/ingredients`, data),
+  removeIngredient: (recipeId, ingredientId) => request('DELETE', `/recipes/${recipeId}/ingredients/${ingredientId}`),
+  updateRecipe: (id, data) => request('PATCH', `/recipes/${id}`, data),
+  logRecipe: (recipeId, data) => request('POST', `/recipes/${recipeId}/log`, data),
 }

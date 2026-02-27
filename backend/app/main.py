@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import meals, profile, usda
+from app.routers import meals, profile, usda, recipes
 
 app = FastAPI(title="Fuel API", version="0.1.0")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(meals.router)
 app.include_router(profile.router)
 app.include_router(usda.router)
+app.include_router(recipes.router)
 
 
 @app.get("/health")
