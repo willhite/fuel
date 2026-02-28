@@ -306,12 +306,13 @@ export default function Dashboard() {
   }
 
   function recipeTotals(ingredients) {
+    const checked = ingredients.filter(i => i.checked)
     return {
-      calories: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.calories_per_unit, 0)),
-      protein: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.protein_per_unit, 0) * 10) / 10,
-      carbs: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.carbs_per_unit, 0) * 10) / 10,
-      fat: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.fat_per_unit, 0) * 10) / 10,
-      fiber: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.fiber_per_unit, 0) * 10) / 10,
+      calories: Math.round(checked.reduce((s, i) => s + i.quantity * i.calories_per_unit, 0)),
+      protein: Math.round(checked.reduce((s, i) => s + i.quantity * i.protein_per_unit, 0) * 10) / 10,
+      carbs: Math.round(checked.reduce((s, i) => s + i.quantity * i.carbs_per_unit, 0) * 10) / 10,
+      fat: Math.round(checked.reduce((s, i) => s + i.quantity * i.fat_per_unit, 0) * 10) / 10,
+      fiber: Math.round(checked.reduce((s, i) => s + i.quantity * i.fiber_per_unit, 0) * 10) / 10,
     }
   }
 
@@ -468,17 +469,24 @@ export default function Dashboard() {
                   <p className="text-xs text-slate-500 px-4 py-3">No templates yet — create one via "manage templates".</p>
                 ) : (
                   recipes.map(recipe => (
-                    <button key={recipe.id}
-                      onClick={() => { openLogModal(recipe); setShowRecipePicker(false) }}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-200 last:border-0">
-                      <p className="text-sm text-slate-900">{recipe.name}</p>
-                      <div className="flex gap-3 mt-0.5 text-xs text-slate-500">
-                        <span className="text-blue-600/80">{Math.round(recipe.total_calories)} kcal</span>
-                        <span>P {Math.round(recipe.total_protein * 10) / 10}g</span>
-                        <span>C {Math.round(recipe.total_carbs * 10) / 10}g</span>
-                        <span>F {Math.round(recipe.total_fat * 10) / 10}g</span>
-                      </div>
-                    </button>
+                    <div key={recipe.id} className="flex items-center border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors">
+                      <button
+                        onClick={() => { openLogModal(recipe); setShowRecipePicker(false) }}
+                        className="flex-1 text-left px-4 py-3">
+                        <p className="text-sm text-slate-900">{recipe.name}</p>
+                        <div className="flex gap-3 mt-0.5 text-xs text-slate-500">
+                          <span className="text-blue-600/80">{Math.round(recipe.total_calories)} kcal</span>
+                          <span>P {Math.round(recipe.total_protein * 10) / 10}g</span>
+                          <span>C {Math.round(recipe.total_carbs * 10) / 10}g</span>
+                          <span>F {Math.round(recipe.total_fat * 10) / 10}g</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { setShowRecipePicker(false); handleEditRecipe(recipe) }}
+                        className="px-3 py-3 text-xs text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0">
+                        edit
+                      </button>
+                    </div>
                   ))
                 )}
               </div>
@@ -622,7 +630,14 @@ export default function Dashboard() {
               <div className="bg-white border border-blue-600/30 rounded-2xl p-5 mt-3">
                 <div className="flex justify-between items-center mb-4">
                   <p className="text-sm font-bold text-slate-900">{logModal.recipe.name}</p>
-                  <button onClick={() => setLogModal(null)} className="text-xs text-slate-500 hover:text-slate-600">cancel</button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => { const r = logModal.recipe; setLogModal(null); handleEditRecipe(r) }}
+                      className="text-xs text-blue-600/60 hover:text-blue-600 transition-colors">
+                      edit template
+                    </button>
+                    <button onClick={() => setLogModal(null)} className="text-xs text-slate-500 hover:text-slate-600">cancel</button>
+                  </div>
                 </div>
                 {logModal.error && <div className="text-red-600 text-xs mb-3">{logModal.error}</div>}
 

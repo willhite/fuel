@@ -20,12 +20,13 @@ router = APIRouter(prefix="/recipes", tags=["recipes"])
 
 
 def _compute_totals(ingredients: list[dict]) -> dict:
+    checked = [i for i in ingredients if i.get("checked", True)]
     return {
-        "total_calories": sum(i["quantity"] * i["calories_per_unit"] for i in ingredients),
-        "total_protein": sum(i["quantity"] * i["protein_per_unit"] for i in ingredients),
-        "total_carbs": sum(i["quantity"] * i["carbs_per_unit"] for i in ingredients),
-        "total_fat": sum(i["quantity"] * i["fat_per_unit"] for i in ingredients),
-        "total_fiber": sum(i["quantity"] * i["fiber_per_unit"] for i in ingredients),
+        "total_calories": sum(i["quantity"] * i["calories_per_unit"] for i in checked),
+        "total_protein": sum(i["quantity"] * i["protein_per_unit"] for i in checked),
+        "total_carbs": sum(i["quantity"] * i["carbs_per_unit"] for i in checked),
+        "total_fat": sum(i["quantity"] * i["fat_per_unit"] for i in checked),
+        "total_fiber": sum(i["quantity"] * i["fiber_per_unit"] for i in checked),
     }
 
 
