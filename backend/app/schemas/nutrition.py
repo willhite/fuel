@@ -33,6 +33,9 @@ class MealCreate(BaseModel):
     fat_g: float = Field(default=0.0, ge=0)
     fiber_g: float = Field(default=0.0, ge=0)
     notes: Optional[str] = None
+    raw_weight: Optional[float] = None
+    total_cooked_weight: Optional[float] = None
+    portion_weight: Optional[float] = None
 
 
 class MealResponse(MealCreate):

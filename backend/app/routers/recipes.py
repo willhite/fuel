@@ -194,6 +194,8 @@ async def log_recipe(recipe_id: str, body: RecipeLogRequest, user=Depends(get_cu
     else:
         scale = 1.0
 
+    raw_weight = sum(o.quantity for o in body.ingredient_overrides)
+
     payload = {
         "user_id": user["id"],
         "logged_date": str(body.logged_date),
@@ -204,6 +206,9 @@ async def log_recipe(recipe_id: str, body: RecipeLogRequest, user=Depends(get_cu
         "carbs_g": round(total_carbs * scale, 1),
         "fat_g": round(total_fat * scale, 1),
         "fiber_g": round(total_fiber * scale, 1),
+        "raw_weight": round(raw_weight, 1),
+        "total_cooked_weight": round(body.total_cooked_weight, 1) if body.total_cooked_weight else None,
+        "portion_weight": round(body.portion_weight, 1) if body.portion_weight else None,
     }
     res = supabase_admin.table("meals").insert(payload).execute()
     if not res.data:

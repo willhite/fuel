@@ -41,6 +41,9 @@ create table public.meals (
   fat_g numeric(6,1) default 0,
   fiber_g numeric(6,1) default 0,
   notes text,
+  raw_weight numeric(7,1),
+  total_cooked_weight numeric(7,1),
+  portion_weight numeric(7,1),
   created_at timestamptz not null default now()
 );
 
