@@ -42,4 +42,5 @@ export const api = {
   updateIngredient: (recipeId, ingredientId, data) => request('PATCH', `/recipes/${recipeId}/ingredients/${ingredientId}`, data),
   logRecipe: (recipeId, data) => request('POST', `/recipes/${recipeId}/log`, data),
   patchMealPortion: (mealId, portionWeight) => request('PATCH', `/meals/${mealId}/portion`, { portion_weight: portionWeight }),
+  restoreTemplate: (recipeId, mealId) => request('POST', `/recipes/${recipeId}/restore-from-meal/${mealId}`),
 }

@@ -79,6 +79,24 @@ create table public.meals (
 
 create index meals_user_date_idx on public.meals (user_id, logged_date desc);
 
+create table public.meal_ingredients (
+  id uuid default gen_random_uuid() primary key,
+  meal_id uuid references public.meals(id) on delete cascade not null,
+  recipe_ingredient_id uuid references public.recipe_ingredients(id) on delete set null,
+  food_name text not null,
+  quantity numeric(8,2) not null,
+  unit text not null,
+  calories_per_unit numeric(8,2) not null default 0,
+  protein_per_unit numeric(8,2) not null default 0,
+  carbs_per_unit numeric(8,2) not null default 0,
+  fat_per_unit numeric(8,2) not null default 0,
+  fiber_per_unit numeric(8,2) not null default 0,
+  usda_fdc_id text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.meal_ingredients enable row level security;
+
 alter table public.profiles enable row level security;
 alter table public.meals enable row level security;
 alter table public.recipes enable row level security;
@@ -97,3 +115,6 @@ create policy "Users can delete own recipes" on public.recipes for delete using 
 create policy "Users can manage ingredients of own recipes"
   on public.recipe_ingredients for all
   using (exists (select 1 from public.recipes where recipes.id = recipe_ingredients.recipe_id and recipes.user_id = auth.uid()));
+create policy "Users can view own meal ingredients"
+  on public.meal_ingredients for select
+  using (exists (select 1 from public.meals where meals.id = meal_ingredients.meal_id and meals.user_id = auth.uid()));

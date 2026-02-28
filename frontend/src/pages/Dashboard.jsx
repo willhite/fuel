@@ -211,12 +211,22 @@ export default function Dashboard() {
     }
   }
 
-  function openTemplate(recipeId) {
+  async function openTemplate(recipeId, mealId) {
     const recipe = recipes.find(r => r.id === recipeId)
     if (!recipe) return
     setShowRecipePicker(false)
     setShowRecipeBuilder(false)
-    openLogModal(recipe)
+    if (mealId) {
+      try {
+        const restored = await api.restoreTemplate(recipeId, mealId)
+        setRecipes(rs => rs.map(r => r.id === recipeId ? restored : r))
+        openLogModal(restored)
+      } catch {
+        openLogModal(recipe)
+      }
+    } else {
+      openLogModal(recipe)
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -778,7 +788,7 @@ export default function Dashboard() {
                             <p className="text-sm text-slate-900 truncate">{meal.name}</p>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               {meal.recipe_id && (
-                                <button onClick={() => openTemplate(meal.recipe_id)} className="text-xs text-blue-600/60 hover:text-blue-600 transition-colors">template</button>
+                                <button onClick={() => openTemplate(meal.recipe_id, meal.id)} className="text-xs text-blue-600/60 hover:text-blue-600 transition-colors">template</button>
                               )}
                               <button onClick={() => handleDelete(meal.id)} className="text-slate-400 hover:text-red-600 transition-colors text-xs">✕</button>
                             </div>

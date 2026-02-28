@@ -36,6 +36,8 @@ def _build_response(recipe: dict, ingredients: list[dict]) -> RecipeResponse:
         id=recipe["id"],
         name=recipe["name"],
         servings=recipe["servings"],
+        last_cooked_weight=recipe.get("last_cooked_weight"),
+        last_meal_type=recipe.get("last_meal_type"),
         ingredients=[RecipeIngredientResponse(**i) for i in ingredients],
         **totals,
     )
@@ -217,9 +219,114 @@ async def log_recipe(recipe_id: str, body: RecipeLogRequest, user=Depends(get_cu
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to log recipe")
 
+    # Snapshot ingredient composition for dish immutability
+    meal_id = res.data[0]["id"]
+    meal_ing_rows = []
+    for override in body.ingredient_overrides:
+        ing = ingredient_by_id.get(override.ingredient_id)
+        if ing:
+            meal_ing_rows.append({
+                "meal_id": meal_id,
+                "recipe_ingredient_id": ing["id"],
+                "food_name": ing["food_name"],
+                "quantity": override.quantity,
+                "unit": ing["unit"],
+                "calories_per_unit": ing["calories_per_unit"],
+                "protein_per_unit": ing["protein_per_unit"],
+                "carbs_per_unit": ing["carbs_per_unit"],
+                "fat_per_unit": ing["fat_per_unit"],
+                "fiber_per_unit": ing["fiber_per_unit"],
+                "usda_fdc_id": ing.get("usda_fdc_id"),
+            })
+    if meal_ing_rows:
+        supabase_admin.table("meal_ingredients").insert(meal_ing_rows).execute()
+
     recipe_update: dict = {"last_meal_type": body.meal_type}
     if body.total_cooked_weight:
         recipe_update["last_cooked_weight"] = round(body.total_cooked_weight, 1)
     supabase_admin.table("recipes").update(recipe_update).eq("id", recipe_id).execute()
 
     return MealResponse(**res.data[0])
+
+
+@router.post("/{recipe_id}/restore-from-meal/{meal_id}", response_model=RecipeResponse)
+async def restore_from_meal(recipe_id: str, meal_id: str, user=Depends(get_current_user)):
+    recipe = _get_recipe_or_404(recipe_id, user["id"])
+
+    # Verify meal belongs to user and links to this recipe
+    meal_res = (
+        supabase_admin.table("meals")
+        .select("id")
+        .eq("id", meal_id)
+        .eq("user_id", user["id"])
+        .eq("recipe_id", recipe_id)
+        .single()
+        .execute()
+    )
+    if not meal_res.data:
+        raise HTTPException(status_code=404, detail="Meal not found")
+
+    # Fetch the ingredient snapshot for this meal
+    meal_ings_res = (
+        supabase_admin.table("meal_ingredients")
+        .select("*")
+        .eq("meal_id", meal_id)
+        .execute()
+    )
+    meal_ings = meal_ings_res.data or []
+
+    # Fetch current recipe ingredients
+    recipe_ings_res = (
+        supabase_admin.table("recipe_ingredients")
+        .select("*")
+        .eq("recipe_id", recipe_id)
+        .execute()
+    )
+    current_ings = {i["id"]: i for i in (recipe_ings_res.data or [])}
+
+    # IDs of recipe ingredients that were used in this meal
+    used_recipe_ing_ids = {
+        mi["recipe_ingredient_id"]
+        for mi in meal_ings
+        if mi.get("recipe_ingredient_id")
+    }
+
+    # Uncheck current recipe ingredients not used in this meal
+    ings_to_uncheck = [id for id in current_ings if id not in used_recipe_ing_ids]
+    if ings_to_uncheck:
+        supabase_admin.table("recipe_ingredients").update({"checked": False}).in_("id", ings_to_uncheck).execute()
+
+    # Restore each meal ingredient into the recipe template
+    for mi in meal_ings:
+        rid = mi.get("recipe_ingredient_id")
+        if rid and rid in current_ings:
+            # Restore quantity and check it
+            supabase_admin.table("recipe_ingredients").update({
+                "quantity": mi["quantity"],
+                "checked": True,
+            }).eq("id", rid).execute()
+        else:
+            # Ingredient was removed from the template — re-add it
+            supabase_admin.table("recipe_ingredients").insert({
+                "recipe_id": recipe_id,
+                "food_name": mi["food_name"],
+                "quantity": mi["quantity"],
+                "unit": mi["unit"],
+                "calories_per_unit": mi["calories_per_unit"],
+                "protein_per_unit": mi["protein_per_unit"],
+                "carbs_per_unit": mi["carbs_per_unit"],
+                "fat_per_unit": mi["fat_per_unit"],
+                "fiber_per_unit": mi["fiber_per_unit"],
+                "usda_fdc_id": mi.get("usda_fdc_id"),
+                "checked": True,
+            }).execute()
+
+    # Return updated recipe
+    updated_ings_res = (
+        supabase_admin.table("recipe_ingredients")
+        .select("*")
+        .eq("recipe_id", recipe_id)
+        .order("created_at")
+        .execute()
+    )
+    return _build_response(recipe, updated_ings_res.data or [])
