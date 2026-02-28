@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
-const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
+const MEAL_TYPES = ['Breakfast', 'Lunch', 'Snack', 'Dinner']
 
 function localToday() {
   const d = new Date()
@@ -53,6 +53,7 @@ export default function Dashboard() {
   const [savingGoals, setSavingGoals] = useState(false)
   const [recipes, setRecipes] = useState([])
   const [showRecipeBuilder, setShowRecipeBuilder] = useState(false)
+  const [showRecipePicker, setShowRecipePicker] = useState(false)
   const [activeRecipe, setActiveRecipe] = useState(null)
   const [recipeName, setRecipeName] = useState('')
   const [recipeIngredients, setRecipeIngredients] = useState([])
@@ -422,26 +423,69 @@ export default function Dashboard() {
         {isToday && (
           <div>
             <div className="flex justify-between items-center mb-3">
-              <p className="text-xs text-neutral-500 uppercase tracking-widest">Recipe Templates</p>
+              <button
+                onClick={() => { setShowRecipePicker(s => !s); setLogModal(null) }}
+                className="text-sm font-bold bg-amber-400 text-neutral-950 px-4 py-2 rounded-xl hover:bg-amber-300 transition-colors">
+                + Log a dish
+              </button>
               <button onClick={() => { setShowRecipeBuilder(s => !s); setActiveRecipe(null); setRecipeIngredients([]) }}
                 className="text-xs text-neutral-600 hover:text-amber-400 transition-colors">
-                {showRecipeBuilder ? 'cancel' : '+ new template'}
+                {showRecipeBuilder ? 'cancel' : 'manage templates'}
               </button>
             </div>
+
+            {showRecipePicker && !showRecipeBuilder && (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden mb-3">
+                {recipes.length === 0 ? (
+                  <p className="text-xs text-neutral-600 px-4 py-3">No templates yet — create one via "manage templates".</p>
+                ) : (
+                  recipes.map(recipe => (
+                    <button key={recipe.id}
+                      onClick={() => { openLogModal(recipe); setShowRecipePicker(false) }}
+                      className="w-full text-left px-4 py-3 hover:bg-neutral-800 transition-colors border-b border-neutral-800 last:border-0">
+                      <p className="text-sm text-white">{recipe.name}</p>
+                      <div className="flex gap-3 mt-0.5 text-xs text-neutral-600">
+                        <span className="text-amber-400/80">{Math.round(recipe.total_calories)} kcal</span>
+                        <span>P {Math.round(recipe.total_protein * 10) / 10}g</span>
+                        <span>C {Math.round(recipe.total_carbs * 10) / 10}g</span>
+                        <span>F {Math.round(recipe.total_fat * 10) / 10}g</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
 
             {showRecipeBuilder && (
               <div className="bg-neutral-900 border border-amber-400/20 rounded-2xl p-5 mb-3">
                 {recipeError && <div className="text-red-400 text-xs mb-3">{recipeError}</div>}
                 {!activeRecipe ? (
-                  <form onSubmit={handleCreateRecipe} className="flex gap-2">
-                    <input type="text" placeholder="Recipe name" value={recipeName}
-                      onChange={e => setRecipeName(e.target.value)}
-                      className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
-                    <button type="submit" disabled={!recipeName.trim()}
-                      className="bg-amber-400 text-neutral-950 font-bold px-4 py-2.5 rounded-xl hover:bg-amber-300 transition-colors disabled:opacity-50 text-sm whitespace-nowrap">
-                      Create
-                    </button>
-                  </form>
+                  <div className="flex flex-col gap-3">
+                    {recipes.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        {recipes.map(recipe => (
+                          <div key={recipe.id} className="flex items-center justify-between px-3 py-2 bg-neutral-800 rounded-xl">
+                            <span className="text-sm text-neutral-300">{recipe.name}</span>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleEditRecipe(recipe)}
+                                className="text-xs text-neutral-500 hover:text-amber-400 transition-colors">edit</button>
+                              <button onClick={() => handleDeleteRecipe(recipe.id)}
+                                className="text-neutral-700 hover:text-red-400 transition-colors text-xs">✕</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <form onSubmit={handleCreateRecipe} className="flex gap-2">
+                      <input type="text" placeholder="New template name" value={recipeName}
+                        onChange={e => setRecipeName(e.target.value)}
+                        className="flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
+                      <button type="submit" disabled={!recipeName.trim()}
+                        className="bg-amber-400 text-neutral-950 font-bold px-4 py-2.5 rounded-xl hover:bg-amber-300 transition-colors disabled:opacity-50 text-sm whitespace-nowrap">
+                        Create
+                      </button>
+                    </form>
+                  </div>
                 ) : (
                   <div className="flex flex-col gap-3">
                     <div className="flex justify-between items-center gap-2">
@@ -543,39 +587,6 @@ export default function Dashboard() {
                     )}
                   </div>
                 )}
-              </div>
-            )}
-
-            {recipes.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {recipes.map(recipe => (
-                  <div key={recipe.id} className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-white">{recipe.name}</p>
-                        <div className="flex gap-3 mt-1 text-xs text-neutral-600">
-                          <span className="text-amber-400/80">{Math.round(recipe.total_calories)} kcal</span>
-                          <span>P {Math.round(recipe.total_protein * 10) / 10}g</span>
-                          <span>C {Math.round(recipe.total_carbs * 10) / 10}g</span>
-                          <span>F {Math.round(recipe.total_fat * 10) / 10}g</span>
-                          <span>Fb {Math.round(recipe.total_fiber * 10) / 10}g</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => handleEditRecipe(recipe)}
-                          className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
-                          edit
-                        </button>
-                        <button onClick={() => openLogModal(recipe)}
-                          className="text-xs bg-neutral-800 border border-neutral-700 hover:border-amber-400 rounded-xl px-3 py-1.5 text-neutral-400 transition-colors">
-                          log
-                        </button>
-                        <button onClick={() => handleDeleteRecipe(recipe.id)}
-                          className="text-neutral-700 hover:text-red-400 transition-colors text-xs">✕</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
 
@@ -685,7 +696,7 @@ export default function Dashboard() {
 
         <div>
           <p className="text-xs text-neutral-500 uppercase tracking-widest mb-3">
-            {isToday ? "Today's dishes" : `Dishes on ${formatDate(currentDate)}`}
+            {isToday ? "Today's meals" : `Meals on ${formatDate(currentDate)}`}
           </p>
           {loading ? (
             <div className="text-neutral-700 text-sm py-8 text-center">Loading...</div>
@@ -695,31 +706,47 @@ export default function Dashboard() {
               No dishes logged{isToday ? ' yet today' : ' for this day'}
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              {summary?.meals.map(meal => {
-                const hasMacros = meal.protein_g > 0 || meal.carbs_g > 0 || meal.fat_g > 0 || meal.fiber_g > 0
+            <div className="flex flex-col gap-4">
+              {MEAL_TYPES.filter(type => summary?.meals.some(m => m.meal_type === type)).map(type => {
+                const typeMeals = summary.meals.filter(m => m.meal_type === type)
+                const sub = {
+                  cal: typeMeals.reduce((s, m) => s + m.calories, 0),
+                  protein: Math.round(typeMeals.reduce((s, m) => s + m.protein_g, 0) * 10) / 10,
+                  carbs: Math.round(typeMeals.reduce((s, m) => s + m.carbs_g, 0) * 10) / 10,
+                  fat: Math.round(typeMeals.reduce((s, m) => s + m.fat_g, 0) * 10) / 10,
+                  fiber: Math.round(typeMeals.reduce((s, m) => s + m.fiber_g, 0) * 10) / 10,
+                }
                 return (
-                  <div key={meal.id} className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-white">{meal.name}</p>
-                        <span className="text-xs text-amber-400/70 bg-neutral-800 rounded-full px-2 py-0.5 mt-1 inline-block">{meal.meal_type}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg font-bold text-amber-400" style={{ fontFamily: 'Georgia, serif' }}>{meal.calories}</span>
-                        {isToday && (
-                          <button onClick={() => handleDelete(meal.id)} className="text-neutral-700 hover:text-red-400 transition-colors text-sm">✕</button>
-                        )}
+                  <div key={type}>
+                    <div className="flex justify-between items-baseline mb-1.5">
+                      <p className="text-xs text-neutral-600 uppercase tracking-widest">{type}</p>
+                      <div className="flex gap-2.5 text-xs text-neutral-600">
+                        <span>{sub.cal} kcal</span>
+                        <span>P {sub.protein}g</span>
+                        <span>C {sub.carbs}g</span>
+                        <span>F {sub.fat}g</span>
+                        <span>Fb {sub.fiber}g</span>
                       </div>
                     </div>
-                    {hasMacros && (
-                      <div className="flex gap-3 mt-2 text-xs text-neutral-600">
-                        {meal.protein_g > 0 && <span>P <span className="text-neutral-400">{meal.protein_g}g</span></span>}
-                        {meal.carbs_g > 0 && <span>C <span className="text-neutral-400">{meal.carbs_g}g</span></span>}
-                        {meal.fat_g > 0 && <span>F <span className="text-neutral-400">{meal.fat_g}g</span></span>}
-                        {meal.fiber_g > 0 && <span>Fb <span className="text-neutral-400">{meal.fiber_g}g</span></span>}
-                      </div>
-                    )}
+                    <div className="flex flex-col gap-1">
+                      {typeMeals.map(meal => (
+                        <div key={meal.id} className="bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2">
+                          <div className="flex justify-between items-center gap-2">
+                            <p className="text-sm text-white truncate">{meal.name}</p>
+                            {isToday && (
+                              <button onClick={() => handleDelete(meal.id)} className="text-neutral-700 hover:text-red-400 transition-colors text-xs flex-shrink-0">✕</button>
+                            )}
+                          </div>
+                          <div className="flex gap-2.5 mt-1 text-xs text-neutral-500">
+                            <span>{meal.calories} kcal</span>
+                            {meal.protein_g > 0 && <span>P {meal.protein_g}g</span>}
+                            {meal.carbs_g > 0 && <span>C {meal.carbs_g}g</span>}
+                            {meal.fat_g > 0 && <span>F {meal.fat_g}g</span>}
+                            {meal.fiber_g > 0 && <span>Fb {meal.fiber_g}g</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )
               })}
