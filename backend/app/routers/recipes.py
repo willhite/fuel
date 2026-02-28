@@ -13,6 +13,7 @@ from app.schemas.nutrition import (
     RecipeResponse,
     RecipeUpdate,
     MealResponse,
+    MealPortionUpdate,
 )
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
@@ -209,8 +210,15 @@ async def log_recipe(recipe_id: str, body: RecipeLogRequest, user=Depends(get_cu
         "raw_weight": round(raw_weight, 1),
         "total_cooked_weight": round(body.total_cooked_weight, 1) if body.total_cooked_weight else None,
         "portion_weight": round(body.portion_weight, 1) if body.portion_weight else None,
+        "recipe_id": recipe_id,
     }
     res = supabase_admin.table("meals").insert(payload).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to log recipe")
+
+    recipe_update: dict = {"last_meal_type": body.meal_type}
+    if body.total_cooked_weight:
+        recipe_update["last_cooked_weight"] = round(body.total_cooked_weight, 1)
+    supabase_admin.table("recipes").update(recipe_update).eq("id", recipe_id).execute()
+
     return MealResponse(**res.data[0])

@@ -29,26 +29,6 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
-create table public.meals (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  logged_date date not null default current_date,
-  meal_type text not null check (meal_type in ('Breakfast', 'Lunch', 'Dinner', 'Snack')),
-  name text not null,
-  calories integer not null check (calories >= 0),
-  protein_g numeric(6,1) default 0,
-  carbs_g numeric(6,1) default 0,
-  fat_g numeric(6,1) default 0,
-  fiber_g numeric(6,1) default 0,
-  notes text,
-  raw_weight numeric(7,1),
-  total_cooked_weight numeric(7,1),
-  portion_weight numeric(7,1),
-  created_at timestamptz not null default now()
-);
-
-create index meals_user_date_idx on public.meals (user_id, logged_date desc);
-
 create table public.recipes (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
@@ -56,6 +36,8 @@ create table public.recipes (
   description text,
   servings integer not null default 1,
   is_public boolean not null default false,
+  last_cooked_weight numeric(7,1),
+  last_meal_type text check (last_meal_type in ('Breakfast', 'Lunch', 'Dinner', 'Snack')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -75,6 +57,27 @@ create table public.recipe_ingredients (
   checked boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+create table public.meals (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  logged_date date not null default current_date,
+  meal_type text not null check (meal_type in ('Breakfast', 'Lunch', 'Dinner', 'Snack')),
+  name text not null,
+  calories integer not null check (calories >= 0),
+  protein_g numeric(6,1) default 0,
+  carbs_g numeric(6,1) default 0,
+  fat_g numeric(6,1) default 0,
+  fiber_g numeric(6,1) default 0,
+  notes text,
+  raw_weight numeric(7,1),
+  total_cooked_weight numeric(7,1),
+  portion_weight numeric(7,1),
+  recipe_id uuid references public.recipes(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index meals_user_date_idx on public.meals (user_id, logged_date desc);
 
 alter table public.profiles enable row level security;
 alter table public.meals enable row level security;

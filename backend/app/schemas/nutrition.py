@@ -36,6 +36,7 @@ class MealCreate(BaseModel):
     raw_weight: Optional[float] = None
     total_cooked_weight: Optional[float] = None
     portion_weight: Optional[float] = None
+    recipe_id: Optional[str] = None
 
 
 class MealResponse(MealCreate):
@@ -106,6 +107,12 @@ class RecipeResponse(BaseModel):
     total_carbs: float
     total_fat: float
     total_fiber: float
+    last_cooked_weight: Optional[float] = None
+    last_meal_type: Optional[str] = None
+
+
+class MealPortionUpdate(BaseModel):
+    portion_weight: float = Field(..., gt=0)
 
 
 class RecipeIngredientOverride(BaseModel):

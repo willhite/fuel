@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [recipeError, setRecipeError] = useState('')
   const [builderName, setBuilderName] = useState('')
   const [logModal, setLogModal] = useState(null)
+  const [editingPortion, setEditingPortion] = useState(null)
 
   const today = localToday()
   const isToday = currentDate === today
@@ -210,18 +211,28 @@ export default function Dashboard() {
     }
   }
 
+  function openTemplate(recipeId) {
+    const recipe = recipes.find(r => r.id === recipeId)
+    if (!recipe) return
+    setShowRecipePicker(false)
+    setShowRecipeBuilder(false)
+    openLogModal(recipe)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   function openLogModal(recipe) {
     const checked = new Set(recipe.ingredients.filter(i => i.checked).map(i => i.id))
     const quantities = {}
     recipe.ingredients.forEach(i => { quantities[i.id] = String(i.quantity) })
     const rawTotal = String(recipe.ingredients.filter(i => i.checked).reduce((s, i) => s + i.quantity, 0))
+    const cookedDefault = recipe.last_cooked_weight != null ? String(recipe.last_cooked_weight) : rawTotal
     setLogModal({
       recipe,
       checked,
       quantities,
-      totalCookedWeight: rawTotal,
-      portionWeight: rawTotal,
-      mealType: 'Breakfast',
+      totalCookedWeight: cookedDefault,
+      portionWeight: cookedDefault,
+      mealType: recipe.last_meal_type ?? 'Breakfast',
       loggedDate: currentDate,
       error: '',
     })
@@ -270,6 +281,23 @@ export default function Dashboard() {
     }
     try {
       await api.logRecipe(logModal.recipe.id, payload)
+
+      // Persist quantity/checked changes back to the template
+      const updates = logModal.recipe.ingredients.flatMap(ing => {
+        const nowChecked = logModal.checked.has(ing.id)
+        const nowQty = parseFloat(logModal.quantities[ing.id]) || ing.quantity
+        const changed = {}
+        if (nowChecked !== ing.checked) changed.checked = nowChecked
+        if (nowQty !== ing.quantity) changed.quantity = nowQty
+        return Object.keys(changed).length > 0
+          ? [api.updateIngredient(logModal.recipe.id, ing.id, changed)]
+          : []
+      })
+      if (updates.length > 0) {
+        await Promise.all(updates)
+        loadRecipes()
+      }
+
       setLogModal(null)
       loadDay(currentDate)
     } catch (err) {
@@ -733,9 +761,12 @@ export default function Dashboard() {
                         <div key={meal.id} className="bg-white border border-slate-200 rounded-xl px-3 py-2">
                           <div className="flex justify-between items-center gap-2">
                             <p className="text-sm text-slate-900 truncate">{meal.name}</p>
-                            {isToday && (
-                              <button onClick={() => handleDelete(meal.id)} className="text-slate-400 hover:text-red-600 transition-colors text-xs flex-shrink-0">✕</button>
-                            )}
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {meal.recipe_id && (
+                                <button onClick={() => openTemplate(meal.recipe_id)} className="text-xs text-blue-600/60 hover:text-blue-600 transition-colors">template</button>
+                              )}
+                              <button onClick={() => handleDelete(meal.id)} className="text-slate-400 hover:text-red-600 transition-colors text-xs">✕</button>
+                            </div>
                           </div>
                           <div className="flex gap-2.5 mt-1 text-xs text-slate-500">
                             <span>{meal.calories} kcal</span>
@@ -745,10 +776,39 @@ export default function Dashboard() {
                             <span>Fb {meal.fiber_g}g</span>
                           </div>
                           {meal.raw_weight != null && (
-                            <div className="flex gap-2.5 mt-1 text-xs text-slate-400">
+                            <div className="flex gap-2.5 mt-1 text-xs text-slate-400 items-center">
                               <span>raw {meal.raw_weight}g</span>
                               {meal.total_cooked_weight != null && <span>· cooked {meal.total_cooked_weight}g</span>}
-                              {meal.portion_weight != null && <span>· ate {meal.portion_weight}g</span>}
+                              {meal.total_cooked_weight != null && (
+                                editingPortion?.mealId === meal.id ? (
+                                  <span className="flex items-center gap-1">
+                                    ·&nbsp;ate&nbsp;
+                                    <input
+                                      type="number" min="1" step="1"
+                                      value={editingPortion.value}
+                                      onChange={e => setEditingPortion(p => ({ ...p, value: e.target.value }))}
+                                      onBlur={async () => {
+                                        const val = parseFloat(editingPortion.value)
+                                        if (val > 0) {
+                                          const updated = await api.patchMealPortion(meal.id, val)
+                                          setSummary(s => ({ ...s, meals: s.meals.map(m => m.id === meal.id ? updated : m) }))
+                                        }
+                                        setEditingPortion(null)
+                                      }}
+                                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingPortion(null) }}
+                                      autoFocus
+                                      className="w-14 bg-white border border-blue-600 rounded px-1 py-0 text-xs text-slate-700 focus:outline-none"
+                                    />
+                                    g
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => setEditingPortion({ mealId: meal.id, value: String(meal.portion_weight ?? meal.total_cooked_weight) })}
+                                    className="hover:text-blue-600 transition-colors">
+                                    · ate {meal.portion_weight ?? meal.total_cooked_weight}g
+                                  </button>
+                                )
+                              )}
                             </div>
                           )}
                         </div>
