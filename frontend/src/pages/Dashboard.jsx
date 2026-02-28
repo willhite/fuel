@@ -48,21 +48,9 @@ export default function Dashboard() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [mealName, setMealName] = useState('')
-  const [mealCal, setMealCal] = useState('')
-  const [mealType, setMealType] = useState('Breakfast')
-  const [mealProtein, setMealProtein] = useState('')
-  const [mealCarbs, setMealCarbs] = useState('')
-  const [mealFat, setMealFat] = useState('')
-  const [mealFiber, setMealFiber] = useState('')
-  const [adding, setAdding] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [goalEdits, setGoalEdits] = useState({})
   const [savingGoals, setSavingGoals] = useState(false)
-  const [foodResults, setFoodResults] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [selectedFood, setSelectedFood] = useState(null)
-  const [grams, setGrams] = useState('100')
   const [recipes, setRecipes] = useState([])
   const [showRecipeBuilder, setShowRecipeBuilder] = useState(false)
   const [activeRecipe, setActiveRecipe] = useState(null)
@@ -72,7 +60,6 @@ export default function Dashboard() {
   const [recipeSearchResults, setRecipeSearchResults] = useState([])
   const [recipeSearching, setRecipeSearching] = useState(false)
   const [recipeGrams, setRecipeGrams] = useState('100')
-  const [recipeSelectedFood, setRecipeSelectedFood] = useState(null)
   const [recipeError, setRecipeError] = useState('')
   const [builderName, setBuilderName] = useState('')
   const [logModal, setLogModal] = useState(null)
@@ -121,47 +108,6 @@ export default function Dashboard() {
       })
     }
   }, [profile])
-
-  async function handleFoodSearch() {
-    if (!mealName.trim()) return
-    setSearching(true)
-    setFoodResults([])
-    try {
-      const results = await api.searchFoods(mealName.trim())
-      setFoodResults(results)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  function applyGrams(food, g) {
-    const factor = parseFloat(g) / 100
-    setMealCal(String(Math.round(food.calories_per_100g * factor)))
-    setMealProtein((food.protein_per_100g * factor).toFixed(1))
-    setMealCarbs((food.carbs_per_100g * factor).toFixed(1))
-    setMealFat((food.fat_per_100g * factor).toFixed(1))
-    setMealFiber((food.fiber_per_100g * factor).toFixed(1))
-  }
-
-  function handleFoodSelect(food) {
-    setSelectedFood(food)
-    setMealName(food.name)
-    setFoodResults([])
-    applyGrams(food, grams)
-  }
-
-  function handleGramsChange(e) {
-    setGrams(e.target.value)
-    if (selectedFood && e.target.value) applyGrams(selectedFood, e.target.value)
-  }
-
-  function clearFoodSearch() {
-    setSelectedFood(null)
-    setFoodResults([])
-    setGrams('100')
-  }
 
   async function handleCreateRecipe(e) {
     e.preventDefault()
@@ -227,7 +173,6 @@ export default function Dashboard() {
     try {
       const added = await api.addIngredient(activeRecipe.id, ingredient)
       setRecipeIngredients(prev => [...prev, added])
-      setRecipeSelectedFood(null)
       setRecipeGrams('100')
     } catch (err) {
       setRecipeError(err.message)
@@ -251,7 +196,6 @@ export default function Dashboard() {
     setRecipeQuery('')
     setRecipeSearchResults([])
     setRecipeGrams('100')
-    setRecipeSelectedFood(null)
     setRecipeError('')
     loadRecipes()
   }
@@ -339,36 +283,6 @@ export default function Dashboard() {
       carbs: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.carbs_per_unit, 0) * 10) / 10,
       fat: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.fat_per_unit, 0) * 10) / 10,
       fiber: Math.round(ingredients.reduce((s, i) => s + i.quantity * i.fiber_per_unit, 0) * 10) / 10,
-    }
-  }
-
-  async function handleAddMeal(e) {
-    e.preventDefault()
-    if (!mealName.trim() || !mealCal) return
-    setAdding(true)
-    try {
-      await api.addMeal({
-        name: mealName.trim(),
-        calories: parseInt(mealCal),
-        meal_type: mealType,
-        logged_date: currentDate,
-        protein_g: mealProtein ? parseFloat(mealProtein) : 0,
-        carbs_g: mealCarbs ? parseFloat(mealCarbs) : 0,
-        fat_g: mealFat ? parseFloat(mealFat) : 0,
-        fiber_g: mealFiber ? parseFloat(mealFiber) : 0,
-      })
-      setMealName('')
-      setMealCal('')
-      setMealProtein('')
-      setMealCarbs('')
-      setMealFat('')
-      setMealFiber('')
-      clearFoodSearch()
-      loadDay(currentDate)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setAdding(false)
     }
   }
 
@@ -504,65 +418,6 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-
-        {isToday && (
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-            <p className="text-xs text-neutral-500 uppercase tracking-widest mb-4">Log a dish</p>
-            <form onSubmit={handleAddMeal} className="flex flex-col gap-2">
-              <div className="flex flex-wrap gap-2">
-                <input type="text" placeholder="Dish name" value={mealName} onChange={e => setMealName(e.target.value)}
-                  className="flex-[2] min-w-36 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
-                <button type="button" onClick={handleFoodSearch} disabled={searching || !mealName.trim()}
-                  className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-xl text-xs text-neutral-400 hover:border-amber-400 transition-colors disabled:opacity-40 whitespace-nowrap">
-                  {searching ? '...' : 'lookup'}
-                </button>
-                <input type="number" placeholder="kcal" value={mealCal} onChange={e => setMealCal(e.target.value)} min="1"
-                  className="flex-1 min-w-20 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400" />
-                <select value={mealType} onChange={e => setMealType(e.target.value)}
-                  className="flex-1 min-w-24 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400">
-                  {MEAL_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
-                <button type="submit" disabled={adding}
-                  className="bg-amber-400 text-neutral-950 font-bold px-5 py-2.5 rounded-xl hover:bg-amber-300 transition-colors disabled:opacity-50 text-sm whitespace-nowrap">
-                  {adding ? '...' : '+ Add'}
-                </button>
-              </div>
-              {foodResults.length > 0 && (
-                <div className="bg-neutral-800 border border-neutral-700 rounded-xl overflow-hidden">
-                  {foodResults.slice(0, 8).map(food => (
-                    <button key={food.fdc_id} type="button" onClick={() => handleFoodSelect(food)}
-                      className="w-full text-left px-3 py-2 hover:bg-neutral-700 text-sm border-b border-neutral-700/50 last:border-0 transition-colors">
-                      <span className="text-white">{food.name}</span>
-                      <span className="text-neutral-500 text-xs ml-2">{food.calories_per_100g} kcal / 100g</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {selectedFood && (
-                <div className="flex items-center gap-2 text-xs text-neutral-500">
-                  <span>{selectedFood.name} ·</span>
-                  <input type="number" value={grams} onChange={handleGramsChange} min="1"
-                    className="w-16 bg-neutral-800 border border-neutral-700 rounded-xl px-2 py-1 text-sm focus:outline-none focus:border-amber-400" />
-                  <span>g</span>
-                  <button type="button" onClick={clearFoodSearch} className="text-neutral-600 hover:text-neutral-400 ml-1">✕</button>
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2 items-center">
-                {[
-                  { val: mealProtein, set: setMealProtein, placeholder: 'protein g' },
-                  { val: mealCarbs, set: setMealCarbs, placeholder: 'carbs g' },
-                  { val: mealFat, set: setMealFat, placeholder: 'fat g' },
-                  { val: mealFiber, set: setMealFiber, placeholder: 'fiber g' },
-                ].map(({ val, set, placeholder }) => (
-                  <input key={placeholder} type="number" placeholder={placeholder} value={val}
-                    onChange={e => set(e.target.value)} min="0" step="0.1"
-                    className="flex-1 min-w-20 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm placeholder-neutral-600 focus:outline-none focus:border-amber-400/50" />
-                ))}
-                <span className="text-xs text-neutral-700 px-1">optional</span>
-              </div>
-            </form>
-          </div>
-        )}
 
         {isToday && (
           <div>
