@@ -211,16 +211,23 @@ export default function Dashboard() {
     }
   }
 
-  async function openTemplate(recipeId, mealId) {
+  async function openTemplate(recipeId, meal) {
     const recipe = recipes.find(r => r.id === recipeId)
     if (!recipe) return
     setShowRecipePicker(false)
     setShowRecipeBuilder(false)
-    if (mealId) {
+    if (meal) {
       try {
-        const restored = await api.restoreTemplate(recipeId, mealId)
+        const restored = await api.restoreTemplate(recipeId, meal.id)
         setRecipes(rs => rs.map(r => r.id === recipeId ? restored : r))
         openLogModal(restored)
+        // Override with the specific meal's cooked/portion/type values
+        setLogModal(prev => ({
+          ...prev,
+          totalCookedWeight: meal.total_cooked_weight != null ? String(meal.total_cooked_weight) : prev.totalCookedWeight,
+          portionWeight: meal.portion_weight != null ? String(meal.portion_weight) : (meal.total_cooked_weight != null ? String(meal.total_cooked_weight) : prev.portionWeight),
+          mealType: meal.meal_type ?? prev.mealType,
+        }))
       } catch {
         openLogModal(recipe)
       }
@@ -478,7 +485,7 @@ export default function Dashboard() {
                 {recipes.length === 0 ? (
                   <p className="text-xs text-slate-500 px-4 py-3">No templates yet — create one via "manage templates".</p>
                 ) : (
-                  recipes.map(recipe => (
+                  [...recipes].sort((a, b) => a.name.localeCompare(b.name)).map(recipe => (
                     <div key={recipe.id} className="flex items-center border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors">
                       <button
                         onClick={() => { openLogModal(recipe); setShowRecipePicker(false) }}
@@ -509,7 +516,7 @@ export default function Dashboard() {
                   <div className="flex flex-col gap-3">
                     {recipes.length > 0 && (
                       <div className="flex flex-col gap-1">
-                        {recipes.map(recipe => (
+                        {[...recipes].sort((a, b) => a.name.localeCompare(b.name)).map(recipe => (
                           <div key={recipe.id} className="flex items-center justify-between px-3 py-2 bg-slate-200 rounded-xl">
                             <span className="text-sm text-slate-700">{recipe.name}</span>
                             <div className="flex items-center gap-2">
@@ -788,7 +795,7 @@ export default function Dashboard() {
                             <p className="text-sm text-slate-900 truncate">{meal.name}</p>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               {meal.recipe_id && (
-                                <button onClick={() => openTemplate(meal.recipe_id, meal.id)} className="text-xs text-blue-600/60 hover:text-blue-600 transition-colors">template</button>
+                                <button onClick={() => openTemplate(meal.recipe_id, meal)} className="text-xs text-blue-600/60 hover:text-blue-600 transition-colors">template</button>
                               )}
                               <button onClick={() => handleDelete(meal.id)} className="text-slate-400 hover:text-red-600 transition-colors text-xs">✕</button>
                             </div>
