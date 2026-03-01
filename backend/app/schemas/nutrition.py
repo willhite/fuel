@@ -45,6 +45,39 @@ class MealResponse(MealCreate):
     created_at: str
 
 
+class DayTypeCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    calories_min: int = Field(default=0, ge=0)
+    calories_max: int = Field(default=0, ge=0)
+    protein_min: int = Field(default=0, ge=0)
+    protein_max: int = Field(default=0, ge=0)
+    carbs_min: int = Field(default=0, ge=0)
+    carbs_max: int = Field(default=0, ge=0)
+    fat_min: int = Field(default=0, ge=0)
+    fat_max: int = Field(default=0, ge=0)
+    fiber_min: int = Field(default=0, ge=0)
+    fiber_max: int = Field(default=0, ge=0)
+
+
+class DayTypeUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    calories_min: Optional[int] = Field(None, ge=0)
+    calories_max: Optional[int] = Field(None, ge=0)
+    protein_min: Optional[int] = Field(None, ge=0)
+    protein_max: Optional[int] = Field(None, ge=0)
+    carbs_min: Optional[int] = Field(None, ge=0)
+    carbs_max: Optional[int] = Field(None, ge=0)
+    fat_min: Optional[int] = Field(None, ge=0)
+    fat_max: Optional[int] = Field(None, ge=0)
+    fiber_min: Optional[int] = Field(None, ge=0)
+    fiber_max: Optional[int] = Field(None, ge=0)
+
+
+class DayTypeResponse(DayTypeCreate):
+    id: str
+    user_id: str
+
+
 class DailySummary(BaseModel):
     date: date
     total_calories: int
@@ -53,6 +86,7 @@ class DailySummary(BaseModel):
     total_fat: float
     total_fiber: float
     meals: list[MealResponse]
+    day_type: Optional[DayTypeResponse] = None
 
 
 class USDAFoodResult(BaseModel):

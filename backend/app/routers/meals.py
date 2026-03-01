@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from app.auth import get_current_user
 from app.database import supabase_admin
-from app.schemas.nutrition import MealCreate, MealResponse, DailySummary, MealPortionUpdate
+from app.schemas.nutrition import MealCreate, MealResponse, DailySummary, MealPortionUpdate, DayTypeResponse
 
 router = APIRouter(prefix="/meals", tags=["meals"])
 
@@ -21,6 +21,20 @@ async def get_day(day: date, user=Depends(get_current_user)):
         .execute()
     )
     meals = response.data or []
+
+    # Fetch day type assignment for this date
+    log_res = (
+        supabase_admin.table("day_logs")
+        .select("day_type_id, day_types(*)")
+        .eq("user_id", user["id"])
+        .eq("logged_date", str(day))
+        .maybe_single()
+        .execute()
+    )
+    day_type = None
+    if log_res.data and log_res.data.get("day_types"):
+        day_type = DayTypeResponse(**log_res.data["day_types"])
+
     return DailySummary(
         date=day,
         total_calories=sum(m["calories"] for m in meals),
@@ -29,6 +43,7 @@ async def get_day(day: date, user=Depends(get_current_user)):
         total_fat=sum(m["fat_g"] or 0 for m in meals),
         total_fiber=sum(m["fiber_g"] or 0 for m in meals),
         meals=[MealResponse(**m) for m in meals],
+        day_type=day_type,
     )
 
 

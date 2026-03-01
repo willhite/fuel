@@ -48,4 +48,10 @@ export const api = {
   createIngredient: (data) => request('POST', '/ingredients/', data),
   updateIngredientLib: (id, data) => request('PATCH', `/ingredients/${id}`, data),
   deleteIngredient: (id) => request('DELETE', `/ingredients/${id}`),
+  getDayTypes: () => request('GET', '/day-types/'),
+  createDayType: (data) => request('POST', '/day-types/', data),
+  updateDayType: (id, data) => request('PATCH', `/day-types/${id}`, data),
+  deleteDayType: (id) => request('DELETE', `/day-types/${id}`),
+  setDayLog: (date, dayTypeId) => request('PUT', `/day-types/log/${date}`, { day_type_id: dayTypeId }),
+  clearDayLog: (date) => request('DELETE', `/day-types/log/${date}`),
 }

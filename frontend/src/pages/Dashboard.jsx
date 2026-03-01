@@ -22,21 +22,79 @@ function offsetDate(dateStr, days) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function MacroBar({ label, value, goal, color }) {
-  const pct = Math.min(100, (value / goal) * 100)
-  const over = value > goal
+function MacroBar({ label, value, goal, min, max, color }) {
+  const hasRange = min != null && max != null && max > 0
+  const cap = hasRange ? max : goal
+  const pct = Math.min(100, (value / (cap || 1)) * 100)
+  const barColor = hasRange
+    ? (value < min ? 'bg-amber-400' : value > max ? 'bg-red-500' : color)
+    : (value > goal ? 'bg-red-500' : color)
+  const labelColor = hasRange
+    ? (value < min ? 'text-amber-500' : value > max ? 'text-red-600' : 'text-slate-700')
+    : (value > goal ? 'text-red-600' : 'text-slate-700')
   return (
     <div className="flex-1 min-w-0">
       <div className="flex justify-between items-baseline mb-1">
         <span className="text-xs text-slate-500">{label}</span>
-        <span className={`text-xs font-bold ${over ? 'text-red-600' : 'text-slate-700'}`}>{value}g</span>
+        <span className={`text-xs font-bold ${labelColor}`}>{value}g</span>
       </div>
       <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-500 ${over ? 'bg-red-500' : color}`}
+        <div className={`h-full rounded-full transition-all duration-500 ${barColor}`}
           style={{ width: `${pct}%` }} />
       </div>
-      <div className="text-xs text-slate-400 mt-0.5">{goal}g</div>
+      <div className="text-xs text-slate-400 mt-0.5">
+        {hasRange ? `${min}–${max}g` : `${goal}g`}
+      </div>
     </div>
+  )
+}
+
+const DAY_TYPE_FIELDS = [
+  { key: 'calories', label: 'Calories', unit: 'kcal' },
+  { key: 'protein', label: 'Protein', unit: 'g' },
+  { key: 'carbs', label: 'Carbs', unit: 'g' },
+  { key: 'fat', label: 'Fat', unit: 'g' },
+  { key: 'fiber', label: 'Fiber', unit: 'g' },
+]
+
+function DayTypeFormFields({ form, setForm, onSubmit, saving, onCancel }) {
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-2 py-2">
+      <input
+        type="text" placeholder="Type name (e.g. Lift, Rest)"
+        value={form.name}
+        onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm placeholder-slate-400 focus:outline-none focus:border-blue-600"
+      />
+      <div className="grid gap-1.5">
+        <div className="grid grid-cols-6 gap-1.5 text-xs text-slate-400 px-0.5">
+          <span className="col-span-2"></span>
+          <span className="text-center">Min</span>
+          <span className="text-center">Max</span>
+        </div>
+        {DAY_TYPE_FIELDS.map(({ key, label, unit }) => (
+          <div key={key} className="grid grid-cols-6 gap-1.5 items-center">
+            <span className="col-span-2 text-xs text-slate-500">{label} ({unit})</span>
+            <input type="number" min="0" placeholder="0"
+              value={form[`${key}_min`]}
+              onChange={e => setForm(f => ({ ...f, [`${key}_min`]: e.target.value }))}
+              className="bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-blue-600" />
+            <input type="number" min="0" placeholder="0"
+              value={form[`${key}_max`]}
+              onChange={e => setForm(f => ({ ...f, [`${key}_max`]: e.target.value }))}
+              className="bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-blue-600" />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 justify-end mt-1">
+        <button type="button" onClick={onCancel}
+          className="text-xs text-slate-500 hover:text-slate-600 px-3 py-1.5">Cancel</button>
+        <button type="submit" disabled={saving || !form.name.trim()}
+          className="bg-blue-600 text-white font-bold px-4 py-1.5 rounded-xl hover:bg-blue-500 transition-colors disabled:opacity-50 text-xs">
+          {saving ? 'Saving...' : (form.id ? 'Update' : 'Add')}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -65,6 +123,9 @@ export default function Dashboard() {
   const [logModal, setLogModal] = useState(null)
   const [editingPortion, setEditingPortion] = useState(null)
   const [viewMode, setViewMode] = useState('cards')
+  const [dayTypes, setDayTypes] = useState([])
+  const [dayTypeForm, setDayTypeForm] = useState(null) // null | 'new' | {id, ...editing}
+  const [dayTypeSaving, setDayTypeSaving] = useState(false)
 
   const today = localToday()
   const isToday = currentDate === today
@@ -90,14 +151,16 @@ export default function Dashboard() {
     setLoading(true)
     setError('')
     try {
-      const [dayData, profileData, histData] = await Promise.all([
+      const [dayData, profileData, histData, typesData] = await Promise.all([
         api.getDay(date),
         api.getProfile(),
         api.getHistory(7),
+        api.getDayTypes(),
       ])
       setSummary(dayData)
       setProfile(profileData)
       setHistory(histData.filter(h => h.date !== date))
+      setDayTypes(typesData)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -354,10 +417,61 @@ export default function Dashboard() {
     }
   }
 
+  const EMPTY_DAY_TYPE = { id: null, name: '', calories_min: '', calories_max: '', protein_min: '', protein_max: '', carbs_min: '', carbs_max: '', fat_min: '', fat_max: '', fiber_min: '', fiber_max: '' }
+
+  async function handleSaveDayType(e) {
+    e.preventDefault()
+    if (!dayTypeForm?.name?.trim()) return
+    setDayTypeSaving(true)
+    try {
+      const payload = {
+        name: dayTypeForm.name.trim(),
+        calories_min: parseInt(dayTypeForm.calories_min) || 0,
+        calories_max: parseInt(dayTypeForm.calories_max) || 0,
+        protein_min: parseInt(dayTypeForm.protein_min) || 0,
+        protein_max: parseInt(dayTypeForm.protein_max) || 0,
+        carbs_min: parseInt(dayTypeForm.carbs_min) || 0,
+        carbs_max: parseInt(dayTypeForm.carbs_max) || 0,
+        fat_min: parseInt(dayTypeForm.fat_min) || 0,
+        fat_max: parseInt(dayTypeForm.fat_max) || 0,
+        fiber_min: parseInt(dayTypeForm.fiber_min) || 0,
+        fiber_max: parseInt(dayTypeForm.fiber_max) || 0,
+      }
+      if (dayTypeForm.id) {
+        const updated = await api.updateDayType(dayTypeForm.id, payload)
+        setDayTypes(prev => prev.map(dt => dt.id === updated.id ? updated : dt).sort((a, b) => a.name.localeCompare(b.name)))
+      } else {
+        const created = await api.createDayType(payload)
+        setDayTypes(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      }
+      setDayTypeForm(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setDayTypeSaving(false)
+    }
+  }
+
+  async function handleDeleteDayType(id) {
+    try {
+      await api.deleteDayType(id)
+      setDayTypes(prev => prev.filter(dt => dt.id !== id))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const dayType = summary?.day_type || null
   const goal = profile?.calorie_goal || 2000
+  const calMin = dayType?.calories_min ?? null
+  const calMax = dayType?.calories_max ?? null
   const total = summary?.total_calories || 0
-  const pct = Math.min(100, (total / goal) * 100)
-  const over = total > goal
+  const calCap = calMax ?? goal
+  const pct = Math.min(100, (total / (calCap || 1)) * 100)
+  const over = calMax != null ? total > calMax : total > goal
+  const calStatus = calMax != null
+    ? (total < calMin ? 'under' : total > calMax ? 'over' : 'on target')
+    : (over ? 'over' : 'left')
 
   const macroTotals = {
     protein: Math.round(summary?.total_protein || 0),
@@ -378,13 +492,27 @@ export default function Dashboard() {
       <header className="max-w-2xl mx-auto px-5 pt-10 pb-0 flex justify-between items-end">
         <h1 className="text-5xl font-black tracking-tight">fu<span className="text-blue-600">el</span></h1>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <button onClick={() => setCurrentDate(offsetDate(currentDate, -1))}
-              className="w-7 h-7 rounded-full bg-white border border-slate-200 hover:border-blue-600 transition-colors flex items-center justify-center text-base">‹</button>
-            <span className="text-slate-700 text-sm">{formatDate(currentDate)}</span>
-            <button onClick={() => { if (currentDate < today) setCurrentDate(offsetDate(currentDate, 1)) }}
-              disabled={currentDate >= today}
-              className="w-7 h-7 rounded-full bg-white border border-slate-200 hover:border-blue-600 transition-colors flex items-center justify-center text-base disabled:opacity-30">›</button>
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <button onClick={() => setCurrentDate(offsetDate(currentDate, -1))}
+                className="w-7 h-7 rounded-full bg-white border border-slate-200 hover:border-blue-600 transition-colors flex items-center justify-center text-base">‹</button>
+              <span className="text-slate-700 text-sm">{formatDate(currentDate)}</span>
+              <button onClick={() => { if (currentDate < today) setCurrentDate(offsetDate(currentDate, 1)) }}
+                disabled={currentDate >= today}
+                className="w-7 h-7 rounded-full bg-white border border-slate-200 hover:border-blue-600 transition-colors flex items-center justify-center text-base disabled:opacity-30">›</button>
+            </div>
+            <select
+              value={summary?.day_type?.id || ''}
+              onChange={async e => {
+                if (e.target.value) await api.setDayLog(currentDate, e.target.value)
+                else await api.clearDayLog(currentDate)
+                loadDay(currentDate)
+              }}
+              className="text-xs text-slate-500 bg-transparent border-none focus:outline-none cursor-pointer"
+            >
+              <option value="">— day type —</option>
+              {dayTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
+            </select>
           </div>
           <button onClick={() => setShowSettings(s => !s)}
             className={`text-xs transition-colors ${showSettings ? 'text-blue-600' : 'text-slate-500 hover:text-slate-600'}`}>
@@ -426,6 +554,42 @@ export default function Dashboard() {
                 </button>
               </div>
             </form>
+
+            <div className="border-t border-slate-100 mt-4 pt-4">
+              <div className="flex justify-between items-center mb-3">
+                <p className="text-xs text-slate-500 uppercase tracking-widest">Day Types</p>
+                {!dayTypeForm && (
+                  <button onClick={() => setDayTypeForm(EMPTY_DAY_TYPE)}
+                    className="text-xs text-blue-600 hover:text-blue-500 transition-colors">+ add type</button>
+                )}
+              </div>
+
+              {dayTypes.map(dt => (
+                <div key={dt.id}>
+                  {dayTypeForm?.id === dt.id ? (
+                    <DayTypeFormFields form={dayTypeForm} setForm={setDayTypeForm} onSubmit={handleSaveDayType} saving={dayTypeSaving} onCancel={() => setDayTypeForm(null)} />
+                  ) : (
+                    <div className="flex items-center justify-between py-1.5 text-xs">
+                      <span className="text-slate-800 font-medium">{dt.name}</span>
+                      <div className="flex items-center gap-3 text-slate-400">
+                        <span>{dt.calories_min}–{dt.calories_max} kcal</span>
+                        <span>P {dt.protein_min}–{dt.protein_max}</span>
+                        <span>C {dt.carbs_min}–{dt.carbs_max}</span>
+                        <span>F {dt.fat_min}–{dt.fat_max}</span>
+                        <button onClick={() => setDayTypeForm({ id: dt.id, name: dt.name, calories_min: dt.calories_min, calories_max: dt.calories_max, protein_min: dt.protein_min, protein_max: dt.protein_max, carbs_min: dt.carbs_min, carbs_max: dt.carbs_max, fat_min: dt.fat_min, fat_max: dt.fat_max, fiber_min: dt.fiber_min, fiber_max: dt.fiber_max })}
+                          className="hover:text-blue-600 transition-colors">edit</button>
+                        <button onClick={() => handleDeleteDayType(dt.id)}
+                          className="hover:text-red-500 transition-colors">✕</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {dayTypeForm && !dayTypeForm.id && (
+                <DayTypeFormFields form={dayTypeForm} setForm={setDayTypeForm} onSubmit={handleSaveDayType} saving={dayTypeSaving} onCancel={() => setDayTypeForm(null)} />
+              )}
+            </div>
           </div>
         )}
 
@@ -437,12 +601,16 @@ export default function Dashboard() {
               </span>
               <div className="text-xs text-slate-500 leading-relaxed">
                 <span className="block text-lg text-slate-900" style={{ fontFamily: 'Georgia, serif' }}>
-                  {loading ? '—' : Math.abs(goal - total).toLocaleString()}
+                  {loading ? '—' : calMax != null
+                    ? (calStatus === 'under' ? (calMin - total).toLocaleString() : calStatus === 'over' ? (total - calMax).toLocaleString() : '✓')
+                    : Math.abs(goal - total).toLocaleString()}
                 </span>
-                {over ? 'kcal over' : 'kcal left'}
+                {calStatus === 'on target' ? 'on target' : calStatus === 'under' ? 'kcal to min' : calStatus === 'over' ? 'kcal over' : (over ? 'kcal over' : 'kcal left')}
               </div>
             </div>
-            <span className="text-xs text-slate-500">goal: {goal.toLocaleString()} kcal</span>
+            <span className="text-xs text-slate-500">
+              {calMax != null ? `${calMin.toLocaleString()}–${calMax.toLocaleString()} kcal` : `goal: ${goal.toLocaleString()} kcal`}
+            </span>
           </div>
           <div className="h-2 bg-slate-200 rounded-full overflow-hidden mb-5">
             <div className={`h-full rounded-full transition-all duration-500 ${over ? 'bg-gradient-to-r from-orange-400 to-red-500' : 'bg-gradient-to-r from-blue-500 to-sky-400'}`}
@@ -450,10 +618,10 @@ export default function Dashboard() {
           </div>
           {!loading && (
             <div className="flex gap-4">
-              <MacroBar label="Protein" value={macroTotals.protein} goal={macroGoals.protein} color="bg-sky-500" />
-              <MacroBar label="Carbs" value={macroTotals.carbs} goal={macroGoals.carbs} color="bg-emerald-400" />
-              <MacroBar label="Fat" value={macroTotals.fat} goal={macroGoals.fat} color="bg-orange-500" />
-              <MacroBar label="Fiber" value={macroTotals.fiber} goal={macroGoals.fiber} color="bg-violet-500" />
+              <MacroBar label="Protein" value={macroTotals.protein} goal={macroGoals.protein} min={dayType?.protein_min} max={dayType?.protein_max} color="bg-sky-500" />
+              <MacroBar label="Carbs" value={macroTotals.carbs} goal={macroGoals.carbs} min={dayType?.carbs_min} max={dayType?.carbs_max} color="bg-emerald-400" />
+              <MacroBar label="Fat" value={macroTotals.fat} goal={macroGoals.fat} min={dayType?.fat_min} max={dayType?.fat_max} color="bg-orange-500" />
+              <MacroBar label="Fiber" value={macroTotals.fiber} goal={macroGoals.fiber} min={dayType?.fiber_min} max={dayType?.fiber_max} color="bg-violet-500" />
             </div>
           )}
         </div>
