@@ -1,9 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import date
+from pydantic import BaseModel
 
 from app.auth import get_current_user
 from app.database import supabase_admin
 from app.schemas.nutrition import DayTypeCreate, DayTypeUpdate, DayTypeResponse
+
+
+class DayLogSet(BaseModel):
+    day_type_id: str
 
 router = APIRouter(prefix="/day-types", tags=["day_types"])
 
@@ -61,10 +66,8 @@ async def delete_day_type(day_type_id: str, user=Depends(get_current_user)):
 
 
 @router.put("/log/{logged_date}", response_model=DayTypeResponse)
-async def set_day_log(logged_date: date, body: dict, user=Depends(get_current_user)):
-    day_type_id = body.get("day_type_id")
-    if not day_type_id:
-        raise HTTPException(status_code=400, detail="day_type_id required")
+async def set_day_log(logged_date: date, body: DayLogSet, user=Depends(get_current_user)):
+    day_type_id = body.day_type_id
 
     # Verify the day type belongs to this user
     dt_res = (

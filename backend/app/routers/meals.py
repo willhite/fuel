@@ -28,12 +28,12 @@ async def get_day(day: date, user=Depends(get_current_user)):
         .select("day_type_id, day_types(*)")
         .eq("user_id", user["id"])
         .eq("logged_date", str(day))
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     day_type = None
-    if log_res.data and log_res.data.get("day_types"):
-        day_type = DayTypeResponse(**log_res.data["day_types"])
+    if log_res.data and log_res.data[0].get("day_types"):
+        day_type = DayTypeResponse(**log_res.data[0]["day_types"])
 
     return DailySummary(
         date=day,
