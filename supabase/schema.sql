@@ -118,3 +118,25 @@ create policy "Users can manage ingredients of own recipes"
 create policy "Users can view own meal ingredients"
   on public.meal_ingredients for select
   using (exists (select 1 from public.meals where meals.id = meal_ingredients.meal_id and meals.user_id = auth.uid()));
+
+create table public.ingredients (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  calories_per_100g numeric(8,2) not null default 0,
+  protein_per_100g numeric(8,2) not null default 0,
+  carbs_per_100g numeric(8,2) not null default 0,
+  fat_per_100g numeric(8,2) not null default 0,
+  fiber_per_100g numeric(8,2) not null default 0,
+  usda_fdc_id text,
+  upc text,
+  source text,
+  source_name text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.ingredients enable row level security;
+create policy "Authenticated users can read ingredients"
+  on public.ingredients for select using (auth.role() = 'authenticated');
+create policy "Authenticated users can manage ingredients"
+  on public.ingredients for all using (auth.role() = 'authenticated');

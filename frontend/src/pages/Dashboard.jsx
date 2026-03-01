@@ -58,9 +58,8 @@ export default function Dashboard() {
   const [recipeName, setRecipeName] = useState('')
   const [recipeIngredients, setRecipeIngredients] = useState([])
   const [recipeQuery, setRecipeQuery] = useState('')
-  const [recipeSearchResults, setRecipeSearchResults] = useState([])
-  const [recipeSearching, setRecipeSearching] = useState(false)
   const [recipeGrams, setRecipeGrams] = useState('100')
+  const [ingredients, setIngredients] = useState([])
   const [recipeError, setRecipeError] = useState('')
   const [builderName, setBuilderName] = useState('')
   const [logModal, setLogModal] = useState(null)
@@ -76,7 +75,15 @@ export default function Dashboard() {
     } catch (_) {}
   }, [])
 
+  const loadIngredients = useCallback(async () => {
+    try {
+      const data = await api.getIngredients()
+      setIngredients(data)
+    } catch (_) {}
+  }, [])
+
   useEffect(() => { loadRecipes() }, [loadRecipes])
+  useEffect(() => { loadIngredients() }, [loadIngredients])
 
   const loadDay = useCallback(async (date) => {
     setLoading(true)
@@ -142,30 +149,15 @@ export default function Dashboard() {
     }
   }
 
-  async function handleRecipeSearch() {
-    if (!recipeQuery.trim()) return
-    setRecipeSearching(true)
-    setRecipeSearchResults([])
-    try {
-      const results = await api.searchFoods(recipeQuery.trim())
-      setRecipeSearchResults(results)
-    } catch (err) {
-      setRecipeError(err.message)
-    } finally {
-      setRecipeSearching(false)
-    }
-  }
-
   async function handleAddRecipeIngredient(food) {
     if (!activeRecipe) return
-    setRecipeSearchResults([])
     setRecipeQuery('')
     const g = parseFloat(recipeGrams) || 100
     const ingredient = {
       food_name: food.name,
       quantity: g,
       unit: 'g',
-      usda_fdc_id: food.fdc_id,
+      usda_fdc_id: food.usda_fdc_id || null,
       calories_per_unit: food.calories_per_100g / 100,
       protein_per_unit: food.protein_per_100g / 100,
       carbs_per_unit: food.carbs_per_100g / 100,
@@ -196,7 +188,6 @@ export default function Dashboard() {
     setActiveRecipe(null)
     setRecipeIngredients([])
     setRecipeQuery('')
-    setRecipeSearchResults([])
     setRecipeGrams('100')
     setRecipeError('')
     loadRecipes()
@@ -312,8 +303,8 @@ export default function Dashboard() {
       })
       if (updates.length > 0) {
         await Promise.all(updates)
-        loadRecipes()
       }
+      loadRecipes()
 
       setLogModal(null)
       loadDay(currentDate)
@@ -554,30 +545,32 @@ export default function Dashboard() {
                     <div className="flex gap-2 items-center">
                       <input type="text" placeholder="Search ingredient" value={recipeQuery}
                         onChange={e => setRecipeQuery(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleRecipeSearch())}
                         className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm placeholder-slate-400 focus:outline-none focus:border-blue-600" />
                       <input type="number" value={recipeGrams} onChange={e => setRecipeGrams(e.target.value)} min="1"
                         className="w-16 bg-white border border-slate-300 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-blue-600" />
                       <span className="text-xs text-slate-500">g</span>
-                      <button type="button" onClick={handleRecipeSearch} disabled={recipeSearching || !recipeQuery.trim()}
-                        className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-600 hover:border-blue-600 transition-colors disabled:opacity-40 whitespace-nowrap">
-                        {recipeSearching ? '...' : 'search'}
-                      </button>
                     </div>
-                    {recipeSearchResults.length > 0 && (
-                      <div className="bg-white border border-slate-300 rounded-xl overflow-hidden">
-                        {recipeSearchResults.slice(0, 6).map(food => (
-                          <button key={food.fdc_id} type="button" onClick={() => handleAddRecipeIngredient(food)}
-                            className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm border-b border-slate-200/50 last:border-0 transition-colors">
-                            <span className="text-slate-900">{food.name}</span>
-                            <span className="text-slate-500 text-xs ml-2">{food.calories_per_100g} kcal/100g</span>
-                            <span className="text-blue-600/70 text-xs ml-2">
-                              +{Math.round(food.calories_per_100g * (parseFloat(recipeGrams) || 100) / 100)} kcal at {recipeGrams}g
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {recipeQuery.trim() && (() => {
+                      const matches = ingredients
+                        .filter(i => i.name.toLowerCase().includes(recipeQuery.toLowerCase()))
+                        .slice(0, 6)
+                      return matches.length > 0 ? (
+                        <div className="bg-white border border-slate-300 rounded-xl overflow-hidden">
+                          {matches.map(food => (
+                            <button key={food.id} type="button" onClick={() => handleAddRecipeIngredient(food)}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm border-b border-slate-200/50 last:border-0 transition-colors">
+                              <span className="text-slate-900">{food.name}</span>
+                              <span className="text-slate-500 text-xs ml-2">{food.calories_per_100g} kcal/100g</span>
+                              <span className="text-blue-600/70 text-xs ml-2">
+                                +{Math.round(food.calories_per_100g * (parseFloat(recipeGrams) || 100) / 100)} kcal at {recipeGrams}g
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 px-1">No matches in library</p>
+                      )
+                    })()}
                     {recipeIngredients.length > 0 && (
                       <div className="flex flex-col gap-1">
                         {recipeIngredients.map(ing => (

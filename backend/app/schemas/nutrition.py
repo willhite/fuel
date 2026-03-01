@@ -115,6 +115,48 @@ class MealPortionUpdate(BaseModel):
     portion_weight: float = Field(..., gt=0)
 
 
+class IngredientCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    calories_per_100g: float = Field(default=0.0, ge=0)
+    protein_per_100g: float = Field(default=0.0, ge=0)
+    carbs_per_100g: float = Field(default=0.0, ge=0)
+    fat_per_100g: float = Field(default=0.0, ge=0)
+    fiber_per_100g: float = Field(default=0.0, ge=0)
+    usda_fdc_id: Optional[str] = None
+    upc: Optional[str] = None
+    source: Optional[str] = None
+    source_name: Optional[str] = None
+
+
+class IngredientUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    calories_per_100g: Optional[float] = Field(None, ge=0)
+    protein_per_100g: Optional[float] = Field(None, ge=0)
+    carbs_per_100g: Optional[float] = Field(None, ge=0)
+    fat_per_100g: Optional[float] = Field(None, ge=0)
+    fiber_per_100g: Optional[float] = Field(None, ge=0)
+    upc: Optional[str] = None
+    source: Optional[str] = None
+    source_name: Optional[str] = None
+
+
+class IngredientResponse(IngredientCreate):
+    id: str
+    created_at: str
+
+
+class UPCLookupResult(BaseModel):
+    upc: str
+    source: str
+    source_name: str
+    usda_fdc_id: Optional[str] = None
+    calories_per_100g: float
+    protein_per_100g: float
+    carbs_per_100g: float
+    fat_per_100g: float
+    fiber_per_100g: float
+
+
 class RecipeIngredientOverride(BaseModel):
     ingredient_id: str
     quantity: float  # actual grams used this session

@@ -43,4 +43,9 @@ export const api = {
   logRecipe: (recipeId, data) => request('POST', `/recipes/${recipeId}/log`, data),
   patchMealPortion: (mealId, portionWeight) => request('PATCH', `/meals/${mealId}/portion`, { portion_weight: portionWeight }),
   restoreTemplate: (recipeId, mealId) => request('POST', `/recipes/${recipeId}/restore-from-meal/${mealId}`),
+  lookupUpc: (upc) => request('GET', `/usda/upc/${encodeURIComponent(upc)}`),
+  getIngredients: () => request('GET', '/ingredients/'),
+  createIngredient: (data) => request('POST', '/ingredients/', data),
+  updateIngredientLib: (id, data) => request('PATCH', `/ingredients/${id}`, data),
+  deleteIngredient: (id) => request('DELETE', `/ingredients/${id}`),
 }
