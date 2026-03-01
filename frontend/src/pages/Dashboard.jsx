@@ -26,10 +26,10 @@ function MacroBar({ label, value, min, max, color }) {
   const hasRange = min != null && max != null && max > 0
   const pct = hasRange ? Math.min(100, (value / max) * 100) : 0
   const barColor = hasRange
-    ? (value < min ? 'bg-amber-400' : value > max ? 'bg-red-500' : color)
+    ? (value < min ? 'bg-amber-400' : value > max ? 'bg-red-500' : 'bg-green-500')
     : color
   const labelColor = hasRange
-    ? (value < min ? 'text-amber-500' : value > max ? 'text-red-600' : 'text-slate-700')
+    ? (value < min ? 'text-amber-500' : value > max ? 'text-red-600' : 'text-green-600')
     : 'text-slate-400'
   return (
     <div className="flex-1 min-w-0">
@@ -441,10 +441,17 @@ export default function Dashboard() {
   const calMax = dayType?.calories_max ?? null
   const total = summary?.total_calories || 0
   const pct = calMax ? Math.min(100, (total / calMax) * 100) : 0
-  const over = calMax != null ? total > calMax : false
   const calStatus = calMax != null
     ? (total < calMin ? 'under' : total > calMax ? 'over' : 'on target')
     : null
+  const calTextColor = calStatus === 'under' ? 'text-amber-500'
+    : calStatus === 'on target' ? 'text-green-600'
+    : calStatus === 'over' ? 'text-red-600'
+    : 'text-blue-600'
+  const calBarColor = calStatus === 'under' ? 'bg-gradient-to-r from-amber-400 to-yellow-400'
+    : calStatus === 'on target' ? 'bg-gradient-to-r from-green-500 to-emerald-400'
+    : calStatus === 'over' ? 'bg-gradient-to-r from-orange-400 to-red-500'
+    : 'bg-gradient-to-r from-blue-500 to-sky-400'
 
   const macroTotals = {
     protein: Math.round(summary?.total_protein || 0),
@@ -534,7 +541,7 @@ export default function Dashboard() {
         <div className="bg-white border border-slate-200 rounded-2xl p-6">
           <div className="flex justify-between items-baseline mb-4">
             <div className="flex items-baseline gap-4">
-              <span className="text-5xl font-bold text-blue-600" style={{ fontFamily: 'Georgia, serif' }}>
+              <span className={`text-5xl font-bold ${calTextColor}`} style={{ fontFamily: 'Georgia, serif' }}>
                 {loading ? '—' : total.toLocaleString()}
               </span>
               <div className="text-xs text-slate-500 leading-relaxed">
@@ -551,7 +558,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="h-2 bg-slate-200 rounded-full overflow-hidden mb-5">
-            <div className={`h-full rounded-full transition-all duration-500 ${over ? 'bg-gradient-to-r from-orange-400 to-red-500' : 'bg-gradient-to-r from-blue-500 to-sky-400'}`}
+            <div className={`h-full rounded-full transition-all duration-500 ${calBarColor}`}
               style={{ width: `${pct}%` }} />
           </div>
           {!loading && (
