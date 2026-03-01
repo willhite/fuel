@@ -12,6 +12,7 @@ create table public.profiles (
   carbs_goal integer not null default 250,
   fat_goal integer not null default 65,
   fiber_goal integer not null default 30,
+  default_day_type_id uuid references public.day_types(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -35,6 +35,27 @@ async def get_day(day: date, user=Depends(get_current_user)):
     if log_res.data and log_res.data[0].get("day_types"):
         day_type = DayTypeResponse(**log_res.data[0]["day_types"])
 
+    if day_type is None:
+        profile_res = (
+            supabase_admin.table("profiles")
+            .select("default_day_type_id")
+            .eq("id", user["id"])
+            .single()
+            .execute()
+        )
+        default_id = profile_res.data.get("default_day_type_id") if profile_res.data else None
+        if default_id:
+            dt_res = (
+                supabase_admin.table("day_types")
+                .select("*")
+                .eq("id", default_id)
+                .eq("user_id", user["id"])
+                .single()
+                .execute()
+            )
+            if dt_res.data:
+                day_type = DayTypeResponse(**dt_res.data)
+
     return DailySummary(
         date=day,
         total_calories=sum(m["calories"] for m in meals),

@@ -5,22 +5,14 @@ from datetime import date
 
 class ProfileUpdate(BaseModel):
     display_name: Optional[str] = None
-    calorie_goal: Optional[int] = Field(None, ge=500, le=10000)
-    protein_goal: Optional[int] = Field(None, ge=0, le=500)
-    carbs_goal: Optional[int] = Field(None, ge=0, le=1000)
-    fat_goal: Optional[int] = Field(None, ge=0, le=500)
-    fiber_goal: Optional[int] = Field(None, ge=0, le=200)
+    default_day_type_id: Optional[str] = None
 
 
 class ProfileResponse(BaseModel):
     id: str
     email: str
     display_name: Optional[str]
-    calorie_goal: int
-    protein_goal: int
-    carbs_goal: int
-    fat_goal: int
-    fiber_goal: int
+    default_day_type_id: Optional[str] = None
 
 
 class MealCreate(BaseModel):

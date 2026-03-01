@@ -22,16 +22,15 @@ function offsetDate(dateStr, days) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function MacroBar({ label, value, goal, min, max, color }) {
+function MacroBar({ label, value, min, max, color }) {
   const hasRange = min != null && max != null && max > 0
-  const cap = hasRange ? max : goal
-  const pct = Math.min(100, (value / (cap || 1)) * 100)
+  const pct = hasRange ? Math.min(100, (value / max) * 100) : 0
   const barColor = hasRange
     ? (value < min ? 'bg-amber-400' : value > max ? 'bg-red-500' : color)
-    : (value > goal ? 'bg-red-500' : color)
+    : color
   const labelColor = hasRange
     ? (value < min ? 'text-amber-500' : value > max ? 'text-red-600' : 'text-slate-700')
-    : (value > goal ? 'text-red-600' : 'text-slate-700')
+    : 'text-slate-400'
   return (
     <div className="flex-1 min-w-0">
       <div className="flex justify-between items-baseline mb-1">
@@ -43,7 +42,7 @@ function MacroBar({ label, value, goal, min, max, color }) {
           style={{ width: `${pct}%` }} />
       </div>
       <div className="text-xs text-slate-400 mt-0.5">
-        {hasRange ? `${min}–${max}g` : `${goal}g`}
+        {hasRange ? `${min}–${max}g` : '—'}
       </div>
     </div>
   )
@@ -107,8 +106,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
-  const [goalEdits, setGoalEdits] = useState({})
-  const [savingGoals, setSavingGoals] = useState(false)
   const [recipes, setRecipes] = useState([])
   const [showRecipeBuilder, setShowRecipeBuilder] = useState(false)
   const [showRecipePicker, setShowRecipePicker] = useState(false)
@@ -169,18 +166,6 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => { loadDay(currentDate) }, [currentDate, loadDay])
-
-  useEffect(() => {
-    if (profile) {
-      setGoalEdits({
-        calorie_goal: profile.calorie_goal,
-        protein_goal: profile.protein_goal,
-        carbs_goal: profile.carbs_goal,
-        fat_goal: profile.fat_goal,
-        fiber_goal: profile.fiber_goal,
-      })
-    }
-  }, [profile])
 
   async function handleCreateRecipe(e) {
     e.preventDefault()
@@ -397,26 +382,6 @@ export default function Dashboard() {
     }
   }
 
-  async function handleSaveGoals(e) {
-    e.preventDefault()
-    setSavingGoals(true)
-    try {
-      const updated = await api.updateProfile({
-        calorie_goal: parseInt(goalEdits.calorie_goal),
-        protein_goal: parseInt(goalEdits.protein_goal),
-        carbs_goal: parseInt(goalEdits.carbs_goal),
-        fat_goal: parseInt(goalEdits.fat_goal),
-        fiber_goal: parseInt(goalEdits.fiber_goal),
-      })
-      setProfile(updated)
-      setShowSettings(false)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSavingGoals(false)
-    }
-  }
-
   const EMPTY_DAY_TYPE = { id: null, name: '', calories_min: '', calories_max: '', protein_min: '', protein_max: '', carbs_min: '', carbs_max: '', fat_min: '', fat_max: '', fiber_min: '', fiber_max: '' }
 
   async function handleSaveDayType(e) {
@@ -461,30 +426,31 @@ export default function Dashboard() {
     }
   }
 
+  async function handleSetDefaultDayType(id) {
+    const newId = profile?.default_day_type_id === id ? null : id
+    try {
+      await api.updateProfile({ default_day_type_id: newId })
+      setProfile(p => ({ ...p, default_day_type_id: newId }))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   const dayType = summary?.day_type || null
-  const goal = profile?.calorie_goal || 2000
   const calMin = dayType?.calories_min ?? null
   const calMax = dayType?.calories_max ?? null
   const total = summary?.total_calories || 0
-  const calCap = calMax ?? goal
-  const pct = Math.min(100, (total / (calCap || 1)) * 100)
-  const over = calMax != null ? total > calMax : total > goal
+  const pct = calMax ? Math.min(100, (total / calMax) * 100) : 0
+  const over = calMax != null ? total > calMax : false
   const calStatus = calMax != null
     ? (total < calMin ? 'under' : total > calMax ? 'over' : 'on target')
-    : (over ? 'over' : 'left')
+    : null
 
   const macroTotals = {
     protein: Math.round(summary?.total_protein || 0),
     carbs: Math.round(summary?.total_carbs || 0),
     fat: Math.round(summary?.total_fat || 0),
     fiber: Math.round(summary?.total_fiber || 0),
-  }
-
-  const macroGoals = {
-    protein: profile?.protein_goal || 150,
-    carbs: profile?.carbs_goal || 250,
-    fat: profile?.fat_goal || 65,
-    fiber: profile?.fiber_goal || 30,
   }
 
   return (
@@ -516,7 +482,7 @@ export default function Dashboard() {
           </div>
           <button onClick={() => setShowSettings(s => !s)}
             className={`text-xs transition-colors ${showSettings ? 'text-blue-600' : 'text-slate-500 hover:text-slate-600'}`}>
-            goals
+            day types
           </button>
           <button onClick={signOut} className="text-xs text-slate-500 hover:text-slate-600">sign out</button>
         </div>
@@ -527,69 +493,41 @@ export default function Dashboard() {
 
         {showSettings && profile && (
           <div className="bg-white border border-blue-600/30 rounded-2xl p-5">
-            <p className="text-xs text-slate-500 uppercase tracking-widest mb-4">Daily Goals</p>
-            <form onSubmit={handleSaveGoals} className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { key: 'calorie_goal', label: 'Calories', unit: 'kcal' },
-                  { key: 'protein_goal', label: 'Protein', unit: 'g' },
-                  { key: 'carbs_goal', label: 'Carbs', unit: 'g' },
-                  { key: 'fat_goal', label: 'Fat', unit: 'g' },
-                  { key: 'fiber_goal', label: 'Fiber', unit: 'g' },
-                ].map(({ key, label, unit }) => (
-                  <div key={key} className="flex-1 min-w-24">
-                    <label className="block text-xs text-slate-500 mb-1">{label} ({unit})</label>
-                    <input type="number" min="1" value={goalEdits[key] || ''}
-                      onChange={e => setGoalEdits(g => ({ ...g, [key]: e.target.value }))}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-600" />
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowSettings(false)}
-                  className="text-xs text-slate-500 hover:text-slate-600 px-3 py-2">Cancel</button>
-                <button type="submit" disabled={savingGoals}
-                  className="bg-blue-600 text-white font-bold px-4 py-2 rounded-xl hover:bg-blue-500 transition-colors disabled:opacity-50 text-sm">
-                  {savingGoals ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-
-            <div className="border-t border-slate-100 mt-4 pt-4">
-              <div className="flex justify-between items-center mb-3">
-                <p className="text-xs text-slate-500 uppercase tracking-widest">Day Types</p>
-                {!dayTypeForm && (
-                  <button onClick={() => setDayTypeForm(EMPTY_DAY_TYPE)}
-                    className="text-xs text-blue-600 hover:text-blue-500 transition-colors">+ add type</button>
-                )}
-              </div>
-
-              {dayTypes.map(dt => (
-                <div key={dt.id}>
-                  {dayTypeForm?.id === dt.id ? (
-                    <DayTypeFormFields form={dayTypeForm} setForm={setDayTypeForm} onSubmit={handleSaveDayType} saving={dayTypeSaving} onCancel={() => setDayTypeForm(null)} />
-                  ) : (
-                    <div className="flex items-center justify-between py-1.5 text-xs">
-                      <span className="text-slate-800 font-medium">{dt.name}</span>
-                      <div className="flex items-center gap-3 text-slate-400">
-                        <span>{dt.calories_min}–{dt.calories_max} kcal</span>
-                        <span>P {dt.protein_min}–{dt.protein_max}</span>
-                        <span>C {dt.carbs_min}–{dt.carbs_max}</span>
-                        <span>F {dt.fat_min}–{dt.fat_max}</span>
-                        <button onClick={() => setDayTypeForm({ id: dt.id, name: dt.name, calories_min: dt.calories_min, calories_max: dt.calories_max, protein_min: dt.protein_min, protein_max: dt.protein_max, carbs_min: dt.carbs_min, carbs_max: dt.carbs_max, fat_min: dt.fat_min, fat_max: dt.fat_max, fiber_min: dt.fiber_min, fiber_max: dt.fiber_max })}
-                          className="hover:text-blue-600 transition-colors">edit</button>
-                        <button onClick={() => handleDeleteDayType(dt.id)}
-                          className="hover:text-red-500 transition-colors">✕</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {dayTypeForm && !dayTypeForm.id && (
-                <DayTypeFormFields form={dayTypeForm} setForm={setDayTypeForm} onSubmit={handleSaveDayType} saving={dayTypeSaving} onCancel={() => setDayTypeForm(null)} />
+            <div className="flex justify-between items-center mb-3">
+              <p className="text-xs text-slate-500 uppercase tracking-widest">Day Types</p>
+              {!dayTypeForm && (
+                <button onClick={() => setDayTypeForm(EMPTY_DAY_TYPE)}
+                  className="text-xs text-blue-600 hover:text-blue-500 transition-colors">+ add type</button>
               )}
             </div>
+
+            {dayTypes.map(dt => (
+              <div key={dt.id}>
+                {dayTypeForm?.id === dt.id ? (
+                  <DayTypeFormFields form={dayTypeForm} setForm={setDayTypeForm} onSubmit={handleSaveDayType} saving={dayTypeSaving} onCancel={() => setDayTypeForm(null)} />
+                ) : (
+                  <div className="flex items-center justify-between py-1.5 text-xs">
+                    <span className="text-slate-800 font-medium">{dt.name}</span>
+                    <div className="flex items-center gap-3 text-slate-400">
+                      <span>{dt.calories_min}–{dt.calories_max} kcal</span>
+                      <span>P {dt.protein_min}–{dt.protein_max}</span>
+                      <span>C {dt.carbs_min}–{dt.carbs_max}</span>
+                      <span>F {dt.fat_min}–{dt.fat_max}</span>
+                      <button onClick={() => handleSetDefaultDayType(dt.id)} title="Set as default"
+                        className={profile?.default_day_type_id === dt.id ? 'text-amber-400' : 'hover:text-amber-300 transition-colors'}>★</button>
+                      <button onClick={() => setDayTypeForm({ id: dt.id, name: dt.name, calories_min: dt.calories_min, calories_max: dt.calories_max, protein_min: dt.protein_min, protein_max: dt.protein_max, carbs_min: dt.carbs_min, carbs_max: dt.carbs_max, fat_min: dt.fat_min, fat_max: dt.fat_max, fiber_min: dt.fiber_min, fiber_max: dt.fiber_max })}
+                        className="hover:text-blue-600 transition-colors">edit</button>
+                      <button onClick={() => handleDeleteDayType(dt.id)}
+                        className="hover:text-red-500 transition-colors">✕</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {dayTypeForm && !dayTypeForm.id && (
+              <DayTypeFormFields form={dayTypeForm} setForm={setDayTypeForm} onSubmit={handleSaveDayType} saving={dayTypeSaving} onCancel={() => setDayTypeForm(null)} />
+            )}
           </div>
         )}
 
@@ -603,13 +541,13 @@ export default function Dashboard() {
                 <span className="block text-lg text-slate-900" style={{ fontFamily: 'Georgia, serif' }}>
                   {loading ? '—' : calMax != null
                     ? (calStatus === 'under' ? (calMin - total).toLocaleString() : calStatus === 'over' ? (total - calMax).toLocaleString() : '✓')
-                    : Math.abs(goal - total).toLocaleString()}
+                    : '—'}
                 </span>
-                {calStatus === 'on target' ? 'on target' : calStatus === 'under' ? 'kcal to min' : calStatus === 'over' ? 'kcal over' : (over ? 'kcal over' : 'kcal left')}
+                {calStatus === 'on target' ? 'on target' : calStatus === 'under' ? 'kcal to min' : calStatus === 'over' ? 'kcal over' : ''}
               </div>
             </div>
             <span className="text-xs text-slate-500">
-              {calMax != null ? `${calMin.toLocaleString()}–${calMax.toLocaleString()} kcal` : `goal: ${goal.toLocaleString()} kcal`}
+              {calMax != null ? `${calMin.toLocaleString()}–${calMax.toLocaleString()} kcal` : ''}
             </span>
           </div>
           <div className="h-2 bg-slate-200 rounded-full overflow-hidden mb-5">
@@ -618,10 +556,10 @@ export default function Dashboard() {
           </div>
           {!loading && (
             <div className="flex gap-4">
-              <MacroBar label="Protein" value={macroTotals.protein} goal={macroGoals.protein} min={dayType?.protein_min} max={dayType?.protein_max} color="bg-sky-500" />
-              <MacroBar label="Carbs" value={macroTotals.carbs} goal={macroGoals.carbs} min={dayType?.carbs_min} max={dayType?.carbs_max} color="bg-emerald-400" />
-              <MacroBar label="Fat" value={macroTotals.fat} goal={macroGoals.fat} min={dayType?.fat_min} max={dayType?.fat_max} color="bg-orange-500" />
-              <MacroBar label="Fiber" value={macroTotals.fiber} goal={macroGoals.fiber} min={dayType?.fiber_min} max={dayType?.fiber_max} color="bg-violet-500" />
+              <MacroBar label="Protein" value={macroTotals.protein} min={dayType?.protein_min} max={dayType?.protein_max} color="bg-sky-500" />
+              <MacroBar label="Carbs" value={macroTotals.carbs} min={dayType?.carbs_min} max={dayType?.carbs_max} color="bg-emerald-400" />
+              <MacroBar label="Fat" value={macroTotals.fat} min={dayType?.fat_min} max={dayType?.fat_max} color="bg-orange-500" />
+              <MacroBar label="Fiber" value={macroTotals.fiber} min={dayType?.fiber_min} max={dayType?.fiber_max} color="bg-violet-500" />
             </div>
           )}
         </div>
