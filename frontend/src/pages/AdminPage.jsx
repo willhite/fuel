@@ -131,8 +131,9 @@ export default function AdminPage() {
   }
 
   async function handleFieldBlur(id, field, value) {
-    const parsed = field === 'name' ? value.trim() : parseFloat(value)
-    if (field !== 'name' && isNaN(parsed)) return
+    const isString = field === 'name' || field === 'upc'
+    const parsed = isString ? (value === null ? null : String(value).trim() || null) : parseFloat(value)
+    if (!isString && isNaN(parsed)) return
     if (field === 'name' && !parsed) return
     try {
       const updated = await api.updateIngredientLib(id, { [field]: parsed })
@@ -261,15 +262,14 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between">
-              {form.upc ? (
-                <span className="text-xs text-slate-400">
-                  upc {form.upc}
-                  {form.source_name && form.source_name !== form.name && (
-                    <span className="ml-2 text-slate-300">· "{form.source_name}"</span>
-                  )}
-                </span>
-              ) : <span />}
+            <div className="flex items-center gap-3 justify-between">
+              <input
+                type="text"
+                placeholder="UPC (optional)"
+                value={form.upc}
+                onChange={e => setForm(f => ({ ...f, upc: e.target.value }))}
+                className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm placeholder-slate-400 focus:outline-none focus:border-blue-600"
+              />
               <button
                 type="submit"
                 disabled={saving || !form.name.trim()}
@@ -320,15 +320,21 @@ export default function AdminPage() {
                       className="text-slate-300 hover:text-red-500 transition-colors text-xs flex-shrink-0"
                     >✕</button>
                   </div>
-                  {(ing.upc || ing.source) && (
-                    <div className="mt-0.5 ml-0 text-xs text-slate-300 flex gap-2">
-                      {ing.upc && <span>{ing.upc}</span>}
-                      {ing.source && <span>· {SOURCE_LABEL[ing.source] || ing.source}</span>}
-                      {ing.source_name && ing.source_name !== ing.name && (
-                        <span className="truncate">· "{ing.source_name}"</span>
-                      )}
-                    </div>
-                  )}
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="UPC"
+                      defaultValue={ing.upc || ''}
+                      onBlur={e => { if ((e.target.value.trim() || null) !== (ing.upc || null)) handleFieldBlur(ing.id, 'upc', e.target.value) }}
+                      className="w-36 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-600 placeholder-slate-300"
+                    />
+                    {ing.source && (
+                      <span className="text-xs text-slate-300">
+                        {SOURCE_LABEL[ing.source] || ing.source}
+                        {ing.source_name && ing.source_name !== ing.name && ` · "${ing.source_name}"`}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
