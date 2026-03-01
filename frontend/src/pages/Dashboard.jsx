@@ -952,15 +952,15 @@ export default function Dashboard() {
                     <td className="px-4 py-2 text-right tabular-nums">{Math.round(summary.total_fiber)}g</td>
                     <td></td>
                   </tr>
-                  {profile && (
+                  {dayType && (
                     <tr className="text-xs text-slate-400 border-t border-slate-100">
-                      <td className="px-4 py-2 uppercase tracking-wide">Goals</td>
+                      <td className="px-4 py-2 uppercase tracking-wide">Range</td>
                       <td></td>
-                      <td className="px-4 py-2 text-right tabular-nums">{profile.calorie_goal}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{profile.protein_goal}g</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{profile.carbs_goal}g</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{profile.fat_goal}g</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{profile.fiber_goal}g</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{dayType.calories_min}–{dayType.calories_max}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{dayType.protein_min}–{dayType.protein_max}g</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{dayType.carbs_min}–{dayType.carbs_max}g</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{dayType.fat_min}–{dayType.fat_max}g</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{dayType.fiber_min}–{dayType.fiber_max}g</td>
                       <td></td>
                     </tr>
                   )}
@@ -1064,9 +1064,6 @@ export default function Dashboard() {
                   className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex justify-between items-center hover:border-blue-600/50 transition-colors text-left">
                   <span className="text-sm text-slate-600">{formatDate(h.date)}</span>
                   <div className="flex items-center gap-3">
-                    <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 rounded-full" style={{ width: `${Math.min(100, (h.calories / goal) * 100)}%` }} />
-                    </div>
                     <span className="text-sm font-bold text-blue-600" style={{ fontFamily: 'Georgia, serif' }}>{h.calories.toLocaleString()}</span>
                   </div>
                 </button>
