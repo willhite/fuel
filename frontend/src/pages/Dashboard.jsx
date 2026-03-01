@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [builderName, setBuilderName] = useState('')
   const [logModal, setLogModal] = useState(null)
   const [editingPortion, setEditingPortion] = useState(null)
+  const [viewMode, setViewMode] = useState('cards')
 
   const today = localToday()
   const isToday = currentDate === today
@@ -748,15 +749,117 @@ export default function Dashboard() {
         )}
 
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">
-            {isToday ? "Today's meals" : `Meals on ${formatDate(currentDate)}`}
-          </p>
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-xs text-slate-500 uppercase tracking-widest">
+              {isToday ? "Today's meals" : `Meals on ${formatDate(currentDate)}`}
+            </p>
+            {summary?.meals.length > 0 && (
+              <div className="flex gap-1">
+                <button onClick={() => setViewMode('cards')}
+                  className={`text-xs px-2 py-0.5 rounded transition-colors ${viewMode === 'cards' ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}>
+                  cards
+                </button>
+                <button onClick={() => setViewMode('table')}
+                  className={`text-xs px-2 py-0.5 rounded transition-colors ${viewMode === 'table' ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}>
+                  table
+                </button>
+              </div>
+            )}
+          </div>
           {loading ? (
             <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>
           ) : summary?.meals.length === 0 ? (
             <div className="text-center py-10 text-slate-400 text-sm">
               <span className="block text-2xl mb-2">🍽</span>
               No dishes logged{isToday ? ' yet today' : ' for this day'}
+            </div>
+          ) : viewMode === 'table' ? (
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs text-slate-400 uppercase tracking-wide">
+                    <th className="px-4 py-2 text-left font-medium w-24">Meal</th>
+                    <th className="px-4 py-2 text-left font-medium">Item</th>
+                    <th className="px-4 py-2 text-right font-medium tabular-nums">kcal</th>
+                    <th className="px-4 py-2 text-right font-medium tabular-nums">Protein</th>
+                    <th className="px-4 py-2 text-right font-medium tabular-nums">Carbs</th>
+                    <th className="px-4 py-2 text-right font-medium tabular-nums">Fat</th>
+                    <th className="px-4 py-2 text-right font-medium tabular-nums">Fiber</th>
+                    <th className="w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MEAL_TYPES.filter(type => summary.meals.some(m => m.meal_type === type)).map(type => {
+                    const typeMeals = summary.meals.filter(m => m.meal_type === type)
+                    const sub = {
+                      cal: typeMeals.reduce((s, m) => s + m.calories, 0),
+                      protein: Math.round(typeMeals.reduce((s, m) => s + (m.protein_g || 0), 0)),
+                      carbs: Math.round(typeMeals.reduce((s, m) => s + (m.carbs_g || 0), 0)),
+                      fat: Math.round(typeMeals.reduce((s, m) => s + (m.fat_g || 0), 0)),
+                      fiber: Math.round(typeMeals.reduce((s, m) => s + (m.fiber_g || 0), 0)),
+                    }
+                    return (
+                      <Fragment key={type}>
+                        {typeMeals.map((meal, i) => (
+                          <tr key={meal.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors text-xs">
+                            <td className="px-4 py-1.5 text-slate-400 whitespace-nowrap">
+                              {i === 0 ? type : ''}
+                            </td>
+                            <td className="px-4 py-1.5">
+                              {meal.recipe_id
+                                ? <button onClick={() => openTemplate(meal.recipe_id, meal)} className="text-blue-600 hover:underline text-left">{meal.name}</button>
+                                : <span className="text-slate-900">{meal.name}</span>}
+                            </td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-slate-700">{meal.calories}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-slate-600">{Math.round(meal.protein_g)}g</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-slate-600">{Math.round(meal.carbs_g)}g</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-slate-600">{Math.round(meal.fat_g)}g</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-slate-600">{Math.round(meal.fiber_g)}g</td>
+                            <td className="px-4 py-1.5 text-right">
+                              <button onClick={() => handleDelete(meal.id)}
+                                className="text-slate-300 hover:text-red-500 transition-colors text-xs">✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                        {typeMeals.length > 1 && (
+                          <tr key={`${type}-sub`} className="border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-700">
+                            <td className="px-4 py-1"></td>
+                            <td className="px-4 py-1">{type} Subtotal</td>
+                            <td className="px-4 py-1 text-right tabular-nums">{sub.cal}</td>
+                            <td className="px-4 py-1 text-right tabular-nums">{sub.protein}g</td>
+                            <td className="px-4 py-1 text-right tabular-nums">{sub.carbs}g</td>
+                            <td className="px-4 py-1 text-right tabular-nums">{sub.fat}g</td>
+                            <td className="px-4 py-1 text-right tabular-nums">{sub.fiber}g</td>
+                            <td></td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                  <tr className="border-t-2 border-slate-200 text-xs font-bold text-slate-800 bg-slate-50">
+                    <td className="px-4 py-2 uppercase tracking-wide text-slate-500">Total</td>
+                    <td></td>
+                    <td className="px-4 py-2 text-right tabular-nums">{summary.total_calories}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{Math.round(summary.total_protein)}g</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{Math.round(summary.total_carbs)}g</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{Math.round(summary.total_fat)}g</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{Math.round(summary.total_fiber)}g</td>
+                    <td></td>
+                  </tr>
+                  {profile && (
+                    <tr className="text-xs text-slate-400 border-t border-slate-100">
+                      <td className="px-4 py-2 uppercase tracking-wide">Goals</td>
+                      <td></td>
+                      <td className="px-4 py-2 text-right tabular-nums">{profile.calorie_goal}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{profile.protein_goal}g</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{profile.carbs_goal}g</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{profile.fat_goal}g</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{profile.fiber_goal}g</td>
+                      <td></td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
